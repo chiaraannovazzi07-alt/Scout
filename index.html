@@ -5454,19 +5454,24 @@ function downloadDvw(targetId) {
   const timeStr = `${pad2(now.getHours())}.${pad2(now.getMinutes())}.00`;
   const mDate = mi.date ? mi.date.split("-").reverse().join("/") : dateStr;
 
+  const homeName = (mi.t || "CASA").replace(/;/g, ",").trim();
+  const visName = (mi.a || "OSPITI").replace(/;/g, ",").trim();
+
   const lines = [
     "[3DATAVOLLEYSCOUT]",
     "FILEFORMAT: 2.0",
     `GENERATOR-DAY: ${dateStr} ${timeStr}`,
     "GENERATOR-PROGRAM: DataScout Volley 4",
     "GENERATOR-VERSION: 4.0",
+    "STATISTICS-ALGORITHM: 1",
+    "MATCH-TYPE: 0",
     "",
     "[3MATCH]",
     `${mDate};20.30.00;2025/2026;${(mi.cat || "CAMPIONATO").replace(/;/g, ",")};;;1;1;Z;1;1;${(mi.place || "").replace(/;/g, ",")};`,
     "",
     "[3TEAMS]",
-    `HOM;${(mi.t || "CASA").replace(/;/g, ",")};${(st.sets || []).filter((q) => q.us > q.th).length};;;;16711680;0;`,
-    `VIS;${(mi.a || "OSPITI").replace(/;/g, ",")};${(st.sets || []).filter((q) => q.th > q.us).length};;;;255;0;`,
+    `HOM;${homeName};${(st.sets || []).filter((q) => q.us > q.th).length};;;;16711680;0;;`,
+    `VIS;${visName};${(st.sets || []).filter((q) => q.th > q.us).length};;;;255;0;;`,
     "",
     "[3MORE]",
     ";;;;;;;;;;;;",
@@ -5486,13 +5491,15 @@ function downloadDvw(targetId) {
   }
 
   const fmtRoster = (teamId, roster) => {
-    (roster || []).forEach((p, idx) => {
+    const validList = (roster && roster.length) ? roster : [{ n: "1", name: "Giocatore 1", r: "S" }];
+    validList.forEach((p, idx) => {
+      const num = parseInt(p.n, 10) || (idx + 1);
       const parts = (p.name || "GIOCATORE").trim().split(/\s+/);
-      const surname = parts[0] || "";
-      const firstName = parts.slice(1).join(" ");
-      const rCode = { L: 1, S: 2, O: 3, C: 4, P: 5 }[(p.r || "").toUpperCase()] || 0;
+      const surname = (parts[0] || "GIOCATORE").replace(/;/g, ",");
+      const firstName = parts.slice(1).join(" ").replace(/;/g, ",");
+      const rCode = { L: 1, S: 2, O: 3, C: 4, P: 5 }[(p.r || "").toUpperCase()] || 2;
       const isLib = (p.r || "").toUpperCase() === "L" ? "L" : "";
-      lines.push(`${teamId};${p.n};${idx + 1};;;;;;${surname};${firstName};;${isLib};${rCode};False;`);
+      lines.push(`${teamId};${num};${idx + 1};;;;;;${surname};${firstName};;${isLib};${rCode};False;`);
     });
   };
 
@@ -5500,32 +5507,65 @@ function downloadDvw(targetId) {
   fmtRoster(0, st.pl);
   lines.push("", "[3PLAYERS-V]");
   fmtRoster(1, st.op);
-  lines.push("", "[3ATTACKCOMBINATION]", "", "[3SETTERCALL]", "", "[3WINNINGSYMBOLS]", "", "[3RESERVE]", "", "[3SCOUT]");
+
+  // Sezioni obbligatorie con almeno 1 voce standard per evitare "List index out of bounds (0)"
+  lines.push(
+    "",
+    "[3ATTACKCOMBINATION]",
+    "X1;4;R;V;Palla Alta 4;;65280;4868;0;;",
+    "X2;2;R;V;Palla Alta 2;;65280;4868;0;;",
+    "CF;3;C;Q;Primo Tempo;;255;4868;0;;",
+    "PP;8;P;M;Pipe;;16711680;4868;0;;",
+    "",
+    "[3SETTERCALL]",
+    "K1;;Chiamata 1;255;1;1;1;4868;;",
+    "",
+    "[3WINNINGSYMBOLS]",
+    "S#;R#;R+;A#;A+;A!;A-;A/;B#;B+;D#;D+;E#;E+;F#;F+;",
+    "",
+    "[3RESERVE]",
+    "",
+    "[3SCOUT]"
+  );
 
   const skToDv = { B: "S", R: "R", S: "E", A: "A", M: "B", D: "D", X: "E" };
   let curSet = 0, curUs = 0, curTh = 0;
 
+  const fallbackLu = (st.lu && st.lu.length === 6) ? st.lu : ["1", "2", "3", "4", "5", "6"];
+  const fallbackOl = (st.ol && st.ol.length === 6) ? st.ol : ["1", "2", "3", "4", "5", "6"];
+
   (st.log || []).forEach((e) => {
-    if (e.s && e.s !== curSet) {
+    const evSet = e.s || 1;
+    if (evSet !== curSet) {
       if (curSet > 0) lines.push(`**${curSet}set`);
-      curSet = e.s; curUs = 0; curTh = 0;
+      curSet = evSet; curUs = 0; curTh = 0;
       const initS = (st.init && st.init[curSet]) || (e.b ? { lu: e.b.lu, ol: e.b.ol } : {});
-      if (initS.lu && initS.lu.length === 6) lines.push(`*P${initS.lu.map(pad2).join(">")}`);
-      if (initS.ol && initS.ol.length === 6) lines.push(`aP${initS.ol.map(pad2).join(">")}`);
+      const luArr = (initS.lu && initS.lu.length === 6) ? initS.lu : fallbackLu;
+      const olArr = (initS.ol && initS.ol.length === 6) ? initS.ol : fallbackOl;
+      lines.push(`*P${luArr.map(pad2).join(">")}`);
+      lines.push(`aP${olArr.map(pad2).join(">")}`);
+      lines.push(`*z1`);
+      lines.push(`az1`);
     }
     const tmChar = e.o ? "a" : "*";
-    const sec = e.vt !== undefined ? Math.round(e.vt) : "";
+    const sec = e.vt !== undefined ? Math.max(0, Math.round(e.vt)) : 0;
+    const pNum = parseInt(e.p, 10);
 
     if (e.k === "T") { lines.push(`${tmChar}T;;;;;;;;;;;;${sec};`); return; }
-    if (e.k === "C") { lines.push(`${tmChar}c${pad2(e.out)}:${pad2(e.in)};;;;;;;;;;;;${sec};`); return; }
+    if (e.k === "C" && !isNaN(parseInt(e.out, 10)) && !isNaN(parseInt(e.in, 10))) {
+      lines.push(`${tmChar}c${pad2(e.out)}:${pad2(e.in)};;;;;;;;;;;;${sec};`);
+      return;
+    }
     if (e.k === "F") { lines.push(`**${curSet}set`); curSet = 0; return; }
 
-    if (e.p && SK[e.k]) {
+    if (!isNaN(pNum) && pNum > 0 && SK[e.k]) {
       const m = e.m || {};
-      const z1 = (e.k === "B" ? m.zs : m.z) || "~";
-      const z2 = m.ze || "~";
+      const dvSk = skToDv[e.k] || "A";
+      const z1 = /^[1-9]$/.test(String(e.k === "B" ? m.zs : m.z)) ? String(e.k === "B" ? m.zs : m.z) : "~";
+      const z2 = /^[1-9]$/.test(String(m.ze)) ? String(m.ze) : "~";
       const subType = m.t === "Salto" ? "Q" : m.t === "S.float" ? "M" : "H";
-      const code = `${tmChar}${pad2(e.p)}${skToDv[e.k] || "A"}${subType}${e.g}~~${z1}${z2}~~~`;
+      const comb = dvSk === "A" ? "X1" : "~~";
+      const code = `${tmChar}${pad2(pNum)}${dvSk}${subType}${e.g}${comb}${z1}${z2}~~~`;
       lines.push(`${code};;;;;;;;;;;;${sec};`);
     }
 
