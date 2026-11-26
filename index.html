@@ -742,6 +742,8 @@ const SK = {
 };
 
 // ==================== 2. STATO E MEMORIA ====================
+let showRosterMgr = false;
+let showRosterAna = false;
 let MID = null, lbo = false, rfd = null, rff = null, rfmsg = "", showRefBox = false, hist = [], redo = [], syo = false, ins = null, insS = null, IX = [], dmc = null, vOn = false, ed = null, rid = null, pm = null;
 let FLD = [], homeList = false, showNewFolderBox = false, fldRenameId = null, fldDelConfirm = null;
 try { FLD = JSON.parse(localStorage.getItem("scoutFolders") || "[]"); } catch (e) {}
@@ -4614,64 +4616,72 @@ function buildRostersManagerHtml() {
   const autoMatched = curMatch ? getMatchedRoster(curMatch, S) : null;
 
   return `<div class="card" style="border:2px solid #f59e0b;margin-bottom:12px">
-    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+    <div onclick="showRosterMgr=!showRosterMgr;render()" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none">
       <div>
         <b style="font-size:15px">👥 Gestione Rose &amp; Collegamento Partite</b>
-        <div class="sm2">Crea le tue rose una volta sola: vengono abbinate in automatico per nome squadra o giocatrici</div>
+        ${!showRosterMgr && autoMatched ? `<span class="sm2" style="margin-left:8px;color:#22c55e">· Attiva: <b>${esc(autoMatched.name)}</b></span>` : ""}
       </div>
-      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-        <input id="new-roster-name" placeholder="Nome nuova rosa (es. Under 18)" style="padding:5px 8px;border-radius:6px;font-size:12px">
-        ${bt("tm_create", "", "+ Crea Rosa", "sm on")}
-      </div>
+      <span class="sm2" style="font-weight:700;color:#f59e0b">${showRosterMgr ? "▲ Chiudi" : "▼ Apri"}</span>
     </div>
 
-    ${TM.length ? `
-    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
-      <span class="sm2"><b>Rosa selezionata:</b></span>
-      ${TM.map((r) => bt("tm_select", String(r.id), `${esc(r.name)} (${(r.players || r.pl || []).length})`, "sm" + (String(r.id) === String(selRosterId) ? " on" : ""))).join("")}
-    </div>` : `<div class="sm2" style="margin-bottom:8px">Nessuna rosa ancora salvata. Crea la tua prima rosa qui sopra.</div>`}
-
-    ${cur ? `
-    <div style="background:rgba(255,255,255,.04);padding:10px;border-radius:8px;margin-bottom:10px">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:8px">
-        <b>Giocatrici di: ${esc(cur.name)}</b>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">
-          ${curMatch ? bt("tm_link_match", String(cur.id), `🔗 Collega & Carica in "${esc(curMatch.name)}"`, "sm on") : ""}
-          ${bt("tm_delete", String(cur.id), "🗑 Elimina Rosa", "sm")}
+    ${showRosterMgr ? `
+    <div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,.1)">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+        <div class="sm2">Crea le tue rose una volta sola: vengono abbinate in automatico per nome squadra o giocatrici</div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <input id="new-roster-name" placeholder="Nome nuova rosa (es. Under 18)" style="padding:5px 8px;border-radius:6px;font-size:12px">
+          ${bt("tm_create", "", "+ Crea Rosa", "sm on")}
         </div>
       </div>
 
-      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
-        <input id="tm-p-num" placeholder="N°" style="width:54px;padding:5px;border-radius:6px;font-size:12px">
-        <input id="tm-p-name" placeholder="Nome e Cognome giocatrice" style="flex:1;min-width:160px;padding:5px 8px;border-radius:6px;font-size:12px">
-        <select id="tm-p-role" style="padding:5px;border-radius:6px;font-size:12px">
-          <option value="P">P (Palleggiatrice)</option>
-          <option value="S">S (Schiacciatrice)</option>
-          <option value="O">O (Opposta)</option>
-          <option value="C">C (Centrale)</option>
-          <option value="L">L (Libero)</option>
-        </select>
-        ${bt("tm_add_player", String(cur.id), "+ Aggiungi Giocatrice", "sm on")}
-      </div>
+      ${TM.length ? `
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+        <span class="sm2"><b>Rosa selezionata:</b></span>
+        ${TM.map((r) => bt("tm_select", String(r.id), `${esc(r.name)} (${(r.players || r.pl || []).length})`, "sm" + (String(r.id) === String(selRosterId) ? " on" : ""))).join("")}
+      </div>` : `<div class="sm2" style="margin-bottom:8px">Nessuna rosa ancora salvata. Crea la tua prima rosa qui sopra.</div>`}
 
-      <div class="tw" style="margin-bottom:0">
-        <table>
-          <thead><tr><th>N°</th><th style="text-align:left">Giocatrice</th><th>Ruolo</th><th>Azioni</th></tr></thead>
-          <tbody>
-            ${curPlayers.length ? curPlayers.map((p, idx) => `<tr>
-              <td><b>#${esc(p.n)}</b></td>
-              <td style="text-align:left">${esc(p.name)}</td>
-              <td>${esc(p.r || "")}</td>
-              <td>${bt("tm_del_player", `${cur.id}:${idx}`, "✕", "sm")}</td>
-            </tr>`).join("") : `<tr><td colspan="4" style="color:var(--mu)">Aggiungi le giocatrici qui sopra</td></tr>`}
-          </tbody>
-        </table>
-      </div>
-    </div>` : ""}
+      ${cur ? `
+      <div style="background:rgba(255,255,255,.04);padding:10px;border-radius:8px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+          <b>Giocatrici di: ${esc(cur.name)}</b>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            ${curMatch ? bt("tm_link_match", String(cur.id), `🔗 Collega & Carica in "${esc(curMatch.name)}"`, "sm on") : ""}
+            ${bt("tm_delete", String(cur.id), "🗑 Elimina Rosa", "sm")}
+          </div>
+        </div>
 
-    ${curMatch ? `<div class="sm2">
-      <b>Partita aperta:</b> ${esc(curMatch.name)} · 
-      <b>Rosa abbinata:</b> ${autoMatched ? `<span style="color:#22c55e"><b>${esc(autoMatched.name)}</b> (${curMatch.rosterId ? "collegata manualmente" : "rilevata in automatico"})</span>` : `<span style="color:#f59e0b">Nessuna rosa abbinata (usa il pulsante "Collega & Carica" qui sopra)</span>`}
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+          <input id="tm-p-num" placeholder="N°" style="width:54px;padding:5px;border-radius:6px;font-size:12px">
+          <input id="tm-p-name" placeholder="Nome e Cognome giocatrice" style="flex:1;min-width:160px;padding:5px 8px;border-radius:6px;font-size:12px">
+          <select id="tm-p-role" style="padding:5px;border-radius:6px;font-size:12px">
+            <option value="P">P (Palleggiatrice)</option>
+            <option value="S">S (Schiacciatrice)</option>
+            <option value="O">O (Opposta)</option>
+            <option value="C">C (Centrale)</option>
+            <option value="L">L (Libero)</option>
+          </select>
+          ${bt("tm_add_player", String(cur.id), "+ Aggiungi Giocatrice", "sm on")}
+        </div>
+
+        <div class="tw" style="margin-bottom:0">
+          <table>
+            <thead><tr><th>N°</th><th style="text-align:left">Giocatrice</th><th>Ruolo</th><th>Azioni</th></tr></thead>
+            <tbody>
+              ${curPlayers.length ? curPlayers.map((p, idx) => `<tr>
+                <td><b>#${esc(p.n)}</b></td>
+                <td style="text-align:left">${esc(p.name)}</td>
+                <td>${esc(p.r || "")}</td>
+                <td>${bt("tm_del_player", `${cur.id}:${idx}`, "✕", "sm")}</td>
+              </tr>`).join("") : `<tr><td colspan="4" style="color:var(--mu)">Aggiungi le giocatrici qui sopra</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </div>` : ""}
+
+      ${curMatch ? `<div class="sm2">
+        <b>Partita aperta:</b> ${esc(curMatch.name)} · 
+        <b>Rosa abbinata:</b> ${autoMatched ? `<span style="color:#22c55e"><b>${esc(autoMatched.name)}</b> (${curMatch.rosterId ? "collegata manualmente" : "rilevata in automatico"})</span>` : `<span style="color:#f59e0b">Nessuna rosa abbinata (usa il pulsante "Collega & Carica" qui sopra)</span>`}
+      </div>` : ""}
     </div>` : ""}
   </div>`;
 }
@@ -4737,8 +4747,13 @@ function getMatchesForRoster(roster) {
 function buildRosterAnalysisHtml() {
   if (!Array.isArray(TM) || !TM.length) {
     return `<div class="card" style="margin-bottom:12px">
-      <b>🏐 Andamento Rose &amp; Giocatrici</b>
-      <div class="sm2">Vai su una partita → Squadra → <b>Salva Rosa</b> per creare la tua prima rosa e vedere l'andamento generale e delle giocatrici.</div>
+      <div onclick="showRosterAna=!showRosterAna;render()" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none">
+        <b>🏐 Andamento Rose &amp; Giocatrici</b>
+        <span class="sm2" style="font-weight:700;color:#f59e0b">${showRosterAna ? "▲ Chiudi" : "▼ Apri"}</span>
+      </div>
+      ${showRosterAna ? `<div class="sm2" style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.1)">
+        Vai su <b>Squadre</b> → <b>Gestione Rose</b> per creare la tua prima rosa e vedere l'andamento generale e delle giocatrici.
+      </div>` : ""}
     </div>`;
   }
 
@@ -4853,43 +4868,51 @@ function buildRosterAnalysisHtml() {
   }
 
   return `<div class="card" style="border:2px solid #f59e0b;margin-bottom:12px">
-    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+    <div onclick="showRosterAna=!showRosterAna;render()" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none">
       <div>
         <b style="font-size:15px">🏐 Andamento Rosa: ${esc(roster.name)}</b>
+        ${!showRosterAna ? `<span class="sm2" style="margin-left:8px">· <b>${pairedMatches.length}</b> gare (<b>${gWon}V - ${gLost}P</b>)</span>` : ""}
+      </div>
+      <span class="sm2" style="font-weight:700;color:#f59e0b">${showRosterAna ? "▲ Chiudi" : "▼ Apri"}</span>
+    </div>
+
+    ${showRosterAna ? `
+    <div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,.1)">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
         <div class="sm2">Partite abbinate: <b>${pairedMatches.length}</b> · Vinte/Perse: <b>${gWon}V - ${gLost}P</b> · Set: <b>${sWon} - ${sLost}</b></div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap">
+          ${TM.map((r) => bt("roster_rep_sel", String(r.id), esc(r.name), "sm" + (String(r.id) === String(roster.id) ? " on" : ""))).join("")}
+          ${bt("save_roster_now", "0", "+ Salva Rosa da Partita", "sm")}
+        </div>
       </div>
-      <div style="display:flex;gap:4px;flex-wrap:wrap">
-        ${TM.map((r) => bt("roster_rep_sel", String(r.id), esc(r.name), "sm" + (String(r.id) === String(roster.id) ? " on" : ""))).join("")}
-        ${bt("save_roster_now", "0", "+ Salva Rosa da Partita", "sm")}
+
+      <div class="sm2" style="margin-bottom:6px"><b>1 · Andamento Generale della Rosa (${pairedMatches.length} gare)</b></div>
+      <div class="tw" style="margin-bottom:10px">
+        <table>
+          <thead><tr><th style="text-align:left">Partita</th><th>Set</th><th>Bat</th><th>Ace</th><th>Ric</th><th>Pos%</th><th>Att</th><th>PtA</th><th>Pt%</th><th>Eff%</th><th>Mur</th></tr></thead>
+          <tbody>
+            ${matchRows || `<tr><td colspan="11" style="color:var(--mu)">Nessuna partita ancora abbinata a questa rosa (collega la partita o usa lo stesso nome squadra/giocatrici)</td></tr>`}
+            <tr class="t">
+              <td style="text-align:left">TOTALE ROSA</td>
+              <td>${sWon}-${sLost}</td>
+              <td>${totSv}</td><td>${totAce} (Err ${totSe})</td>
+              <td>${totRc}</td><td>${pc(totRp, totRc)} (Perf ${pc(totRx, totRc)})</td>
+              <td>${totAt}</td><td>${totAp}</td><td>${pc(totAp, totAt)}</td><td>${pc(totAp - totAe, totAt)}</td>
+              <td>${totBk}</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
-    </div>
 
-    <div class="sm2" style="margin-bottom:6px"><b>1 · Andamento Generale della Rosa (${pairedMatches.length} gare)</b></div>
-    <div class="tw" style="margin-bottom:10px">
-      <table>
-        <thead><tr><th style="text-align:left">Partita</th><th>Set</th><th>Bat</th><th>Ace</th><th>Ric</th><th>Pos%</th><th>Att</th><th>PtA</th><th>Pt%</th><th>Eff%</th><th>Mur</th></tr></thead>
-        <tbody>
-          ${matchRows || `<tr><td colspan="11" style="color:var(--mu)">Nessuna partita ancora abbinata a questa rosa (collega la partita o usa lo stesso nome squadra/giocatrici)</td></tr>`}
-          <tr class="t">
-            <td style="text-align:left">TOTALE ROSA</td>
-            <td>${sWon}-${sLost}</td>
-            <td>${totSv}</td><td>${totAce} (Err ${totSe})</td>
-            <td>${totRc}</td><td>${pc(totRp, totRc)} (Perf ${pc(totRx, totRc)})</td>
-            <td>${totAt}</td><td>${totAp}</td><td>${pc(totAp, totAt)}</td><td>${pc(totAp - totAe, totAt)}</td>
-            <td>${totBk}</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <div class="sm2" style="margin-bottom:6px"><b>2 · Andamento Giocatrici della Rosa (clicca un nome per il dettaglio partita per partita)</b></div>
-    <div class="tw" style="margin-bottom:0">
-      <table>
-        <thead><tr><th>#</th><th style="text-align:left">Giocatrice</th><th>Pt</th><th>Bat</th><th>Ace</th><th>Ric</th><th>Pos%</th><th>Att</th><th>PtA</th><th>Pt%</th><th>Eff%</th><th>Mur</th></tr></thead>
-        <tbody>${playerRows || `<tr><td colspan="12">Nessuna giocatrice in questa rosa</td></tr>`}</tbody>
-      </table>
-    </div>
-    ${detailHtml}
+      <div class="sm2" style="margin-bottom:6px"><b>2 · Andamento Giocatrici della Rosa (clicca un nome per il dettaglio partita per partita)</b></div>
+      <div class="tw" style="margin-bottom:0">
+        <table>
+          <thead><tr><th>#</th><th style="text-align:left">Giocatrice</th><th>Pt</th><th>Bat</th><th>Ace</th><th>Ric</th><th>Pos%</th><th>Att</th><th>PtA</th><th>Pt%</th><th>Eff%</th><th>Mur</th></tr></thead>
+          <tbody>${playerRows || `<tr><td colspan="12">Nessuna giocatrice in questa rosa</td></tr>`}</tbody>
+        </table>
+      </div>
+      ${detailHtml}
+    </div>` : ""}
   </div>`;
 }
 function vStat() {
@@ -4914,7 +4937,7 @@ function vStat() {
   return { r, won, lost, diff: won - lost, soPct: pc(soWon, soPts.length), bpPct: pc(bpWon, bpPts.length) };
   });
 
-  let h = `${buildRostersManagerHtml()}${buildRosterAnalysisHtml()}<div class="row" >
+  let h = `${buildRosterAnalysisHtml()}<div class="row" >
     ${bt("tms", "0", t0, tmS ? "" : "on")}
     ${bt("tms", "1", t1, tmS ? "on" : "")}
     ${bt("tmap_toggle", "", tmapOpen ? "✕ Chiudi Mappa Tattica" : "🎯 Mappa Tattica & Traiettorie", "sm" + (tmapOpen ? " on" : ""))}
@@ -5268,7 +5291,7 @@ function vConfig() {
 function vTeam() {
   const m = IX.find((x) => x.id == MID) || {}, t0 = m.t || "Noi", t1 = m.a || "Avversari";
   const fmtR = (R) => R.map((p) => `${p.n} ${p.name} ${p.r}`.trim()).join("\n");
-  return `<div class="cols">
+  return `${buildRostersManagerHtml()}<div class="cols">
     <div class="card">
       <div class="lbl" style="margin-top:0">Rosa ${esc(t0)} (Numero Nome Ruolo: P/S/O/C/L)</div>
       <textarea id="ro">${esc(fmtR(S.pl))}</textarea>
