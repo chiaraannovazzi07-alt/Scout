@@ -2114,7 +2114,7 @@ const H = {
     } else el.focus();
     keepCodeFocus = false;
   },
-  export_dvw: () => { downloadDvw(); },
+  export_dvw: (v) => { downloadDvw(v); },
   to_cancel: () => { clearInterval(toTimerId); $("to-overlay").style.display = "none"; },
   open_sanc: () => { $("sanc-overlay").style.display = "flex"; },
   close_sanc: () => { $("sanc-overlay").style.display = "none"; },
@@ -3584,13 +3584,14 @@ function vHome() {
               </div>
             </div>`
           : `<div class="ma" >
-              ${bt("om", m.id, "▶ Apri", "on")}
-              ${folderSelect}
-              ${m.rf ? bt("rfv", m.id, "📄", "sm") : ""}
-              ${bt("dup", m.id, "📋", "sm")}
-              ${bt("ex", m.id, "🖨️", "sm")}
-              ${bt("rn", m.id, "✎", "sm")}
-              ${bt("dm", m.id, dmc == m.id ? "Conferma?" : "🗑", "sm")}
+                ${bt("om", m.id, "▶ Apri", "on")}
+                ${folderSelect}
+                ${m.rf ? bt("rfv", m.id, "📄", "sm") : ""}
+                ${bt("export_dvw", m.id, "DVW", "sm")}
+                ${bt("dup", m.id, "📋", "sm")}
+                ${bt("ex", m.id, "🖨️", "sm")}
+                ${bt("rn", m.id, "✎", "sm")}
+                ${bt("dm", m.id, dmc == m.id ? "Conferma?" : "🗑", "sm")}
             </div>`
       }
     </div>`;
@@ -5437,8 +5438,16 @@ function executeDvCode(raw) {
   return true;
 }
 
-function downloadDvw() {
-  const mi = IX.find((x) => x.id == MID) || { name: "Partita", t: "CASA", a: "OSPITI" };
+function downloadDvw(targetId) {
+  const id = targetId || MID;
+  if (!id) return;
+  let st = S;
+  if (id != MID) {
+    try { st = JSON.parse(localStorage.getItem("scoutM_" + id)); } catch (e) {}
+  }
+  if (!st) { xs("Dati partita non trovati", 2000); return; }
+
+  const mi = IX.find((x) => x.id == id) || { name: "Partita", t: "CASA", a: "OSPITI" };
   const pad2 = (n) => String(parseInt(n, 10) || 0).padStart(2, "0");
   const now = new Date();
   const dateStr = `${pad2(now.getDate())}/${pad2(now.getMonth() + 1)}/${now.getFullYear()}`;
@@ -5450,69 +5459,88 @@ function downloadDvw() {
     "FILEFORMAT: 2.0",
     `GENERATOR-DAY: ${dateStr} ${timeStr}`,
     "GENERATOR-PROGRAM: DataScout Volley 4",
+    "GENERATOR-VERSION: 4.0",
     "",
     "[3MATCH]",
-    `${mDate};20.30.00;2025/2026;${(mi.cat || "CAMPIONATO").replace(/;/g, ",")};;;1;1;Z;1;1;`,
+    `${mDate};20.30.00;2025/2026;${(mi.cat || "CAMPIONATO").replace(/;/g, ",")};;;1;1;Z;1;1;${(mi.place || "").replace(/;/g, ",")};`,
     "",
     "[3TEAMS]",
-    `HOM;${(mi.t || "CASA").replace(/;/g, ",")};${(S.sets || []).filter((q) => q.us > q.th).length};;;;16711680;0;`,
-    `VIS;${(mi.a || "OSPITI").replace(/;/g, ",")};${(S.sets || []).filter((q) => q.th > q.us).length};;;;255;0;`,
+    `HOM;${(mi.t || "CASA").replace(/;/g, ",")};${(st.sets || []).filter((q) => q.us > q.th).length};;;;16711680;0;`,
+    `VIS;${(mi.a || "OSPITI").replace(/;/g, ",")};${(st.sets || []).filter((q) => q.th > q.us).length};;;;255;0;`,
+    "",
+    "[3MORE]",
+    ";;;;;;;;;;;;",
+    "",
+    "[3COMMENTS]",
     "",
     "[3SET]"
   ];
 
-  const allSets = [...(S.sets || [])];
-  if (S.us + S.th > 0 && !allSets.some((x) => x.s == S.set)) allSets.push({ s: S.set, us: S.us, th: S.th });
+  const allSets = [...(st.sets || [])];
+  if ((st.us || 0) + (st.th || 0) > 0 && !allSets.some((x) => x.s == st.set)) {
+    allSets.push({ s: st.set, us: st.us, th: st.th });
+  }
   for (let i = 0; i < 5; i++) {
-    const st = allSets[i];
-    lines.push(st ? `True;8-6;16-14;21-19;${st.us}-${st.th};25;` : "False;;;;;;");
+    const sObj = allSets[i];
+    lines.push(sObj ? `True;8-6;16-14;21-19;${sObj.us}-${sObj.th};25;` : "False;;;;;;");
   }
 
   const fmtRoster = (teamId, roster) => {
     (roster || []).forEach((p, idx) => {
       const parts = (p.name || "GIOCATORE").trim().split(/\s+/);
+      const surname = parts[0] || "";
+      const firstName = parts.slice(1).join(" ");
       const rCode = { L: 1, S: 2, O: 3, C: 4, P: 5 }[(p.r || "").toUpperCase()] || 0;
       const isLib = (p.r || "").toUpperCase() === "L" ? "L" : "";
-      lines.push(`${teamId};${p.n};${idx + 1};;;;;;${parts[0] || ""};${parts.slice(1).join(" ")};;${isLib};${rCode};False;`);
+      lines.push(`${teamId};${p.n};${idx + 1};;;;;;${surname};${firstName};;${isLib};${rCode};False;`);
     });
   };
+
   lines.push("", "[3PLAYERS-H]");
-  fmtRoster(0, S.pl);
+  fmtRoster(0, st.pl);
   lines.push("", "[3PLAYERS-V]");
-  fmtRoster(1, S.op);
-  lines.push("", "[3SCOUT]");
+  fmtRoster(1, st.op);
+  lines.push("", "[3ATTACKCOMBINATION]", "", "[3SETTERCALL]", "", "[3WINNINGSYMBOLS]", "", "[3RESERVE]", "", "[3SCOUT]");
 
   const skToDv = { B: "S", R: "R", S: "E", A: "A", M: "B", D: "D", X: "E" };
   let curSet = 0, curUs = 0, curTh = 0;
-  (S.log || []).forEach((e) => {
+
+  (st.log || []).forEach((e) => {
     if (e.s && e.s !== curSet) {
       if (curSet > 0) lines.push(`**${curSet}set`);
       curSet = e.s; curUs = 0; curTh = 0;
-      const initS = (S.init && S.init[curSet]) || {};
+      const initS = (st.init && st.init[curSet]) || (e.b ? { lu: e.b.lu, ol: e.b.ol } : {});
       if (initS.lu && initS.lu.length === 6) lines.push(`*P${initS.lu.map(pad2).join(">")}`);
       if (initS.ol && initS.ol.length === 6) lines.push(`aP${initS.ol.map(pad2).join(">")}`);
     }
     const tmChar = e.o ? "a" : "*";
-    if (e.k === "T") { lines.push(`${tmChar}T`); return; }
-    if (e.k === "C") { lines.push(`${tmChar}c${pad2(e.out)}:${pad2(e.in)}`); return; }
+    const sec = e.vt !== undefined ? Math.round(e.vt) : "";
+
+    if (e.k === "T") { lines.push(`${tmChar}T;;;;;;;;;;;;${sec};`); return; }
+    if (e.k === "C") { lines.push(`${tmChar}c${pad2(e.out)}:${pad2(e.in)};;;;;;;;;;;;${sec};`); return; }
     if (e.k === "F") { lines.push(`**${curSet}set`); curSet = 0; return; }
+
     if (e.p && SK[e.k]) {
       const m = e.m || {};
       const z1 = (e.k === "B" ? m.zs : m.z) || "~";
       const z2 = m.ze || "~";
-      lines.push(`${tmChar}${pad2(e.p)}${skToDv[e.k] || "A"}H${e.g}~~${z1}${z2}~~~`);
+      const subType = m.t === "Salto" ? "Q" : m.t === "S.float" ? "M" : "H";
+      const code = `${tmChar}${pad2(e.p)}${skToDv[e.k] || "A"}${subType}${e.g}~~${z1}${z2}~~~`;
+      lines.push(`${code};;;;;;;;;;;;${sec};`);
     }
-    if (e.pt === 1) { curUs++; lines.push(`*p${pad2(curUs)}:${pad2(curTh)}`); }
-    else if (e.pt === 0) { curTh++; lines.push(`ap${pad2(curUs)}:${pad2(curTh)}`); }
+
+    if (e.pt === 1) { curUs++; lines.push(`*p${pad2(curUs)}:${pad2(curTh)};;;;;;;;;;;;${sec};`); }
+    else if (e.pt === 0) { curTh++; lines.push(`ap${pad2(curUs)}:${pad2(curTh)};;;;;;;;;;;;${sec};`); }
   });
   if (curSet > 0) lines.push(`**${curSet}set`);
 
-  const blob = new Blob([lines.join("\r\n")], { type: "text/plain;charset=utf-8" });
+  const blob = new Blob([lines.join("\r\n")], { type: "text/plain;charset=windows-1252" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = `${(mi.name || "match").replace(/[^a-z0-9_-]/gi, "_")}.dvw`;
   a.click();
   URL.revokeObjectURL(a.href);
+  xs(`Scaricato ${a.download}`, 2200);
 }
 
 // ==================== UNDO/REDO STORICO, TIMEOUT & BACKUP ====================
