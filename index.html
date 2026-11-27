@@ -797,6 +797,10 @@ const SK = {
     ["qa", "Qualità palla", QUALITA_PALLA],
     ["mu", "Muro", ["1 muratore", "2 muratori", "3 muratori"]],
   ]],
+  FB: ["Free ball", [["#", "Punto"], ["+", "Positiva"], ["!", "Neutra"], ["-", "Scarsa"], ["=", "Errore"]], [
+    ["zs", "Da zona", ["1", "2", "3", "4", "5", "6", "7", "8", "9"]],
+    ["ze", "Verso zona", ["1", "2", "3", "4", "5", "6", "7", "8", "9", "Lungo", "Sx", "Dx", "Rete"]],
+  ]],
   M: ["Muro", [["#", "Punto"], ["+", "Tocco utile"], ["-", "Subìto"], ["=", "Errore"]], [["n", "Muratori", ["1", "2", "3"]]]],
   B: ["Battuta", [["#", "Ace"], ["+", "Positiva"], ["!", "Neutra"], ["-", "Scarsa"], ["=", "Errore"]], [
     ["t", "Tipo", ["Float", "Salto", "S.float"]],
@@ -1234,6 +1238,21 @@ function parseReferto(txt) {
   };
 }
 
+// ==================== ZONE DATA VOLLEY <-> APP ====================
+// Numerazione standard DV (vista dalla squadra che gioca nel proprio campo):
+//     4 3 2   (prima linea, rete in alto)
+//     7 8 9
+//     5 6 1   (seconda linea)
+// Zona di partenza attacco: 4/3/2 prima linea; 1/5 angoli seconda linea; 6 (o 8) = pipe.
+// Zona di arrivo: sempre numerata dal punto di vista della squadra che DIFENDE.
+const DV_ATT_START_TO_APP = { "1": "1", "2": "2", "3": "3", "4": "4", "5": "5", "6": "Pipe", "7": "4", "8": "Pipe", "9": "2" };
+function dvAttackStartToApp(z) { return DV_ATT_START_TO_APP[String(z)] || ""; }
+function dvZoneDigit(v) { return /^[1-9]$/.test(String(v == null ? "" : v)) ? String(v) : ""; }
+function appAttackStartToDvDigit(z) {
+  if (String(z == null ? "" : z).toLowerCase() === "pipe") return "6";
+  return dvZoneDigit(z);
+}
+
 // Importazione nativa file standard Data Volley (.dvw)
 function parseDvwFile(text, fileName) {
   const lines = (text || "").replace(/\r/g, "").split("\n");
@@ -1257,9 +1276,8 @@ function parseDvwFile(text, fileName) {
         const dm = cols[0].match(/(\d{1,2})\/(\d{1,2})\/(20\d{2})/);
         if (dm) date = `${dm[3]}-${dm[2].padStart(2, "0")}-${dm[1].padStart(2, "0")}`;
       }
-      if (cols[2] && cols[2].trim()) t0 = cols[2].trim();
-      if (cols[3] && cols[3].trim()) t1 = cols[3].trim();
-      if (cols[4] && cols[4].trim()) cat = cols[4].trim();
+      // cols[2] = stagione, cols[3] = campionato: i nomi squadra stanno in [3TEAMS]
+      if (cols[3] && cols[3].trim()) cat = cols[3].trim();
       if (cols[7] && cols[7].trim()) place = cols[7].trim();
     } else if (section === "[3TEAMS]") {
       if (cols[1] && cols[1].trim()) {
@@ -1305,21 +1323,30 @@ function parseDvwFile(text, fileName) {
         if (sm) { curSet = +sm[1] + 1; us = 0; th = 0; }
         return;
       }
-      const mAct = code.match(/^([*a])(\d{2})([SRABMDFEW])([HQTMCPOUN]?)([#+\!\-\/=])/i);
+      const mAct = code.match(/^([*a])(\d{2})([SRABMDFEW])([A-Z~]?)([#+\!\-\/=])/i);
       if (mAct) {
         if (!lu.length) lu = pl.filter((p) => p.r !== "L").slice(0, 6).map((p) => p.n);
         if (!ol.length) ol = op.filter((p) => p.r !== "L").slice(0, 6).map((p) => p.n);
         const isOpp = mAct[1] === "a";
         const pNum = String(parseInt(mAct[2], 10));
         const rawSk = mAct[3].toUpperCase();
-        const skMap = { S: "B", R: "R", A: "A", B: "M", M: "M", D: "D", F: "D", E: "S", W: "S" };
+        const skMap = { S: "B", R: "R", A: "A", B: "M", M: "M", D: "D", F: "FB", E: "S", W: "S" };
         const k = skMap[rawSk] || "A";
         const g = mAct[5];
-        const z1 = code[6] && /[1-9]/.test(code[6]) ? code[6] : "";
-        const z2 = code[7] && /[1-9]/.test(code[7]) ? code[7] : "";
+        // Layout codice DV: 1 squadra | 2-3 giocatrice | 4 fondamentale | 5 tipo | 6 esito |
+        // 7-8 combinazione | 9 target/alzata | 10 ZONA PARTENZA | 11 ZONA ARRIVO | 12 sottozona | 13 tipo colpo | 14 muratori
+        const z1 = dvZoneDigit(code[9]);
+        const z2 = dvZoneDigit(code[10]);
         const modObj = {};
-        if (z1) { if (k === "A") modObj.z = z1; else if (k === "B") modObj.zs = z1; }
-        if (z2 && (k === "A" || k === "B")) modObj.ze = z2;
+        if (k === "A") {
+          const zz = dvAttackStartToApp(z1);
+          if (zz) modObj.z = zz;
+        } else if (k === "B") {
+          if (["1", "5", "6"].includes(z1)) modObj.zs = z1;
+        } else if (k === "FB") {
+          if (z1) modObj.zs = z1;
+        }
+        if (z2 && (k === "A" || k === "B" || k === "FB")) modObj.ze = z2;
         const vtSec = cols[12] && !isNaN(+cols[12]) ? +cols[12] : undefined;
         const entry = {
           id: "dvw_" + log.length + "_" + Date.now(),
@@ -1684,7 +1711,8 @@ const DEFAULT_RULES_CFG = {
     S: { code: "E", name: "Alzata", key: "w", aliases: ["AL"] },
     A: { code: "A", name: "Attacco", key: "a", aliases: ["AT"] },
     M: { code: "M", name: "Muro", key: "m", aliases: ["BK"] },
-    D: { code: "D", name: "Difesa", key: "d", aliases: ["DF", "F"] },
+    D: { code: "D", name: "Difesa", key: "d", aliases: ["DF"] },
+    FB: { code: "F", name: "Free ball", key: "f", aliases: ["FB", "FREE"] },
     X: { code: "X", name: "Errore", key: "q", aliases: ["ERR"] }
   },
   gradeAliases: { "#": ["à"], "+": [], "!": [], "-": [], "/": [], "=": [] },
@@ -1739,8 +1767,8 @@ const DEFAULT_RULES_CFG = {
   },
   rally: {
     startSkill: "B",
-    winPoints: [{ skill: "A", grade: "#" }, { skill: "M", grade: "#" }, { skill: "B", grade: "#" }],
-    lossPoints: [{ skill: "A", grade: "=" }, { skill: "A", grade: "/" }, { skill: "B", grade: "=" }, { skill: "R", grade: "=" }, { skill: "S", grade: "=" }, { skill: "M", grade: "=" }, { skill: "D", grade: "=" }, { skill: "X", grade: "=" }]
+    winPoints: [{ skill: "A", grade: "#" }, { skill: "M", grade: "#" }, { skill: "B", grade: "#" }, { skill: "FB", grade: "#" }],
+    lossPoints: [{ skill: "A", grade: "=" }, { skill: "A", grade: "/" }, { skill: "B", grade: "=" }, { skill: "R", grade: "=" }, { skill: "S", grade: "=" }, { skill: "M", grade: "=" }, { skill: "D", grade: "=" }, { skill: "X", grade: "=" }, { skill: "FB", grade: "=" }]
   },
   links: [
     { id: "link_block_kill", enabled: true, fromSkill: "M", fromGrade: "#", toSkill: "A", setGrade: "/", pointTo: "self", name: "Muro punto (#) -> Attacco avversario murato (/)" },
@@ -1766,6 +1794,16 @@ function loadRulesConfig() {
   cfg.phases.ballQualAliases = Object.assign({}, DEFAULT_RULES_CFG.phases.ballQualAliases, (cfg.phases && cfg.phases.ballQualAliases) || {});
   cfg.rally = Object.assign({}, DEFAULT_RULES_CFG.rally, cfg.rally || {});
   if (!cfg.links) cfg.links = JSON.parse(JSON.stringify(DEFAULT_RULES_CFG.links));
+  // migrazione: introduzione Free ball (alias "F" di Difesa passa al nuovo fondamentale + regole punto)
+  if (!cfg._fbMig) {
+    cfg._fbMig = 1;
+    if (cfg.skills.D && Array.isArray(cfg.skills.D.aliases)) cfg.skills.D.aliases = cfg.skills.D.aliases.filter((a) => String(a).toUpperCase() !== "F");
+    const hasR = (arr, k, g) => arr.some((x) => x.skill === k && x.grade === g);
+    cfg.rally.winPoints = (cfg.rally.winPoints || []).slice();
+    cfg.rally.lossPoints = (cfg.rally.lossPoints || []).slice();
+    if (!hasR(cfg.rally.winPoints, "FB", "#")) cfg.rally.winPoints.push({ skill: "FB", grade: "#" });
+    if (!hasR(cfg.rally.lossPoints, "FB", "=")) cfg.rally.lossPoints.push({ skill: "FB", grade: "=" });
+  }
   // migrazione: vecchia config con Alzata = "S" (in conflitto con Battuta)
   if (cfg.skills.S && cfg.skills.S.code === "S") {
     cfg.skills.S.code = "E";
@@ -1877,7 +1915,7 @@ function detectRallyPhase(teamIsOpp, currentSet) {
 
 function getSkillKeyMap() {
   const cfg = (typeof S !== "undefined" && S.rulesCfg) || loadRulesConfig();
-  const map = { r: "R", d: "D", a: "A", m: "M", b: "B", q: "X", w: "S" };
+  const map = { r: "R", d: "D", a: "A", m: "M", b: "B", q: "X", w: "S", f: "FB" };
   if (cfg && cfg.skills) {
     for (const [canonical, item] of Object.entries(cfg.skills)) {
       if (item.key) map[item.key.toLowerCase()] = canonical;
@@ -2984,54 +3022,37 @@ const H = {
   },
   cfg_save: () => {
     const cfg = (typeof S !== "undefined" && S.rulesCfg) || loadRulesConfig();
-    const splitTokens = (val) => val.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean);
-    Object.keys(cfg.skills).forEach((k) => {
-      const codeEl = $("cfg_sk_code_" + k), keyEl = $("cfg_sk_key_" + k), aliasEl = $("cfg_sk_alias_" + k);
-      if (codeEl && codeEl.value.trim()) cfg.skills[k].code = codeEl.value.trim().toUpperCase();
-      if (keyEl) cfg.skills[k].key = keyEl.value.trim().toLowerCase();
-      if (aliasEl) cfg.skills[k].aliases = splitTokens(aliasEl.value).map((x) => x.toUpperCase());
-    });
-    GRADE_META.forEach((gm, idx) => {
-      const el = $("cfg_gd_alias_" + idx);
-      if (el) cfg.gradeAliases[gm.grade] = splitTokens(el.value);
-    });
-    TIPI_ALZATA.forEach((tName, idx) => {
-      const el = $("cfg_at_alias_" + idx);
-      if (el) cfg.attackAliases[tName] = splitTokens(el.value);
-    });
-    const k1El = $("cfg_ph_k1"), k2El = $("cfg_ph_k2"), frEl = $("cfg_ph_fr");
-    if (k1El) cfg.phases.k1Codes = splitTokens(k1El.value).map((x) => x.toUpperCase());
-    if (k2El) cfg.phases.k2Codes = splitTokens(k2El.value).map((x) => x.toUpperCase());
-    if (frEl) cfg.phases.freeCodes = splitTokens(frEl.value).map((x) => x.toUpperCase());
-
-    TIPI_BATTUTA.forEach((bName, idx) => {
-      const el = $("cfg_bt_alias_" + idx);
-      if (el) cfg.serviceAliases[bName] = splitTokens(el.value);
-    });
-    TIPI_PALLA_DIF.forEach((dName, idx) => {
-      const el = $("cfg_df_alias_" + idx);
-      if (el) cfg.ballTypeAliases[dName] = splitTokens(el.value);
-    });
-    TIPI_COLPO.forEach((cName, idx) => {
-      const el = $("cfg_ca_alias_" + idx);
-      if (el) cfg.phases.shotAliases[cName] = splitTokens(el.value);
-    });
-    QUALITA_PALLA.forEach((qName, idx) => {
-      const el = $("cfg_qa_alias_" + idx);
-      if (el) cfg.phases.ballQualAliases[qName] = splitTokens(el.value);
-    });
-    ZONE_CAMPO_ALIAS.forEach((zName, idx) => {
-      const el = $("cfg_zn_alias_" + idx);
-      if (el) cfg.zoneAliases[zName] = splitTokens(el.value);
-    });
-    RUOLI_CAMPO_ALIAS.forEach((rName, idx) => {
-      const el = $("cfg_rl_alias_" + idx);
-      if (el) cfg.roleAliases[rName] = splitTokens(el.value).map((x) => x.toUpperCase());
-    });
-
+    collectRulesFromDom(cfg);
     saveRulesConfig(cfg); render();
     const alertEl = $("cfg-alert");
     if (alertEl) { alertEl.style.display = "block"; alertEl.style.background = "#064e3b"; alertEl.style.color = "#a7f3d0"; alertEl.textContent = "✅ Regole e codici salvati!"; }
+  },
+  cfg_rule_add: (v) => {
+    const cfg = (typeof S !== "undefined" && S.rulesCfg) || loadRulesConfig();
+    collectRulesFromDom(cfg);
+    const key = v === "win" ? "winPoints" : "lossPoints";
+    cfg.rally[key] = (cfg.rally[key] || []).concat([{ skill: "A", grade: v === "win" ? "#" : "=" }]);
+    saveRulesConfig(cfg); render();
+  },
+  cfg_rule_del: (v) => {
+    const cfg = (typeof S !== "undefined" && S.rulesCfg) || loadRulesConfig();
+    collectRulesFromDom(cfg);
+    const [t, i] = String(v).split(":");
+    const key = t === "win" ? "winPoints" : "lossPoints";
+    (cfg.rally[key] || []).splice(+i, 1);
+    saveRulesConfig(cfg); render();
+  },
+  cfg_link_add: () => {
+    const cfg = (typeof S !== "undefined" && S.rulesCfg) || loadRulesConfig();
+    collectRulesFromDom(cfg);
+    cfg.links = (cfg.links || []).concat([{ id: "link_" + Date.now(), enabled: true, fromSkill: "M", fromGrade: "#", toSkill: "A", setGrade: "/", pointTo: "self", name: "" }]);
+    saveRulesConfig(cfg); render();
+  },
+  cfg_link_del: (v) => {
+    const cfg = (typeof S !== "undefined" && S.rulesCfg) || loadRulesConfig();
+    collectRulesFromDom(cfg);
+    (cfg.links || []).splice(+v, 1);
+    saveRulesConfig(cfg); render();
   },
   cfg_reset: () => { resetRulesConfig(); render(); },
   edo: () => { ed = null; render(); },
@@ -3569,20 +3590,30 @@ document.addEventListener("pointerup", () => {
   const end = getCourtZoneFromPoint(d.x2 / d.w, d.y2 / d.h);
   tj = [+(d.x1 / d.w).toFixed(3), +(d.y1 / d.h).toFixed(3), +(d.x2 / d.w).toFixed(3), +(d.y2 / d.h).toFixed(3)];
 
+  const prevTm = tm;
   tm = start.team;
-  if (start.row === 2 && start.team !== end.team && ["5", "6", "1"].includes(start.zone)) {
-    fs = "B";
+  const crossNet = start.team !== end.team;
+  const backStart = start.row === 2 && ["5", "6", "1"].includes(start.zone);
+  // Battuta vs attacco: se l'utente ha gia' scelto il fondamentale lo rispetto
+  // (un attacco da seconda linea / pipe parte dalle stesse zone 5-6-1 della battuta).
+  const isServe = fs === "B" ? crossNet : fs === "A" ? false : (crossNet && backStart);
+  if (fs === "FB") {
     mod = { zs: start.zone, ze: end.zone };
+    if (prevTm !== tm) ap = null;
+  } else if (isServe) {
+    fs = "B";
+    const servZone = backStart ? start.zone : (start.team === 0 ? ["5", "6", "1"] : ["1", "6", "5"])[start.col];
+    mod = { zs: servZone, ze: end.zone };
     ap = tm === 0 ? S.lu[0] : S.ol[0];
   } else {
     fs = "A";
-    const startZoneAtt = ["4", "3", "2", "1", "5"].includes(start.zone) ? start.zone : (start.zone === "8" ? "Pipe" : "4");
+    const startZoneAtt = dvAttackStartToApp(start.zone) || "4";
     mod = { z: startZoneAtt, ze: end.zone };
     const LU = tm === 0 ? S.lu : S.ol;
     const zMap = { "1": 0, "2": 1, "3": 2, "4": 3, "5": 4, "Pipe": 5 };
     if (zMap[startZoneAtt] !== undefined && LU[zMap[startZoneAtt]]) ap = LU[zMap[startZoneAtt]];
   }
-  xs(`Traiettoria ${fs === "B" ? "Battuta" : "Attacco"}: Zona ${start.zone} → Zona ${end.zone}`, 2200);
+  xs(`Traiettoria ${fs === "B" ? "Battuta" : fs === "FB" ? "Free ball" : "Attacco"}: Zona ${start.zone} → Zona ${end.zone}`, 2200);
   render();
 });
 
@@ -4195,6 +4226,7 @@ function nxt(e, end) {
     if (hit) ap = hit.n;
     fs = "A"; return;
   }
+  if (e.k == "FB") { tm = e.o ? 0 : 1; ap = null; fs = "D"; mod = { ft: "Free ball" }; return; }
   if (e.k == "A") { tm = e.o ? 0 : 1; ap = null; fs = "D"; }
 }
 
@@ -4298,7 +4330,7 @@ function renderActionControls(s, t0, t1) {
     <div class="seg">
       ${Object.keys(SK).map((k) => {
         const cfg = (typeof S !== "undefined" && S.rulesCfg) || loadRulesConfig();
-        const kHint = (cfg && cfg.skills && cfg.skills[k] && cfg.skills[k].key) ? cfg.skills[k].key.toUpperCase() : { R: "R", D: "D", A: "A", M: "M", B: "B", X: "Q", S: "W" }[k];
+        const kHint = (cfg && cfg.skills && cfg.skills[k] && cfg.skills[k].key) ? cfg.skills[k].key.toUpperCase() : { R: "R", D: "D", A: "A", M: "M", B: "B", X: "Q", S: "W", FB: "F" }[k];
         return `<button class="sk${fs == k ? " on" : ""}" data-a="sk" data-v="${k}">${SK[k][0]}<span class="kk">${kHint}</span></button>`;
       }).join("")}
     </div>
@@ -4442,7 +4474,7 @@ function vLineup() {
 // ==================== STATISTICHE, WORM CHART & MAPPA TATTICA INTERATTIVA ====================
 function cnt(es, k) {
   const g = (x) => es.filter((e) => e.g == x).length, n = es.length;
-  if (k == "R" || k == "D" || k == "S") { const p = g("#") + g("+"); return [n, p, pc(p, n), g("#"), pc(g("#"), n), g("=")]; }
+  if (k == "R" || k == "D" || k == "S" || k == "FB") { const p = g("#") + g("+"); return [n, p, pc(p, n), g("#"), pc(g("#"), n), g("=")]; }
   if (k == "A") { const p = g("#"), e = g("=") + g("/"); return [n, p, pc(p, n), g("/"), g("="), pc(p - e, n)]; }
   if (k == "M") return [n, g("#"), g("+"), g("-"), g("=")];
   if (k == "B") { const p = g("#"), e = g("="); return [n, p, pc(p, n), g("+"), e, pc(p - e, n)]; }
@@ -4456,6 +4488,7 @@ const HD = {
   B: ["Tot", "Ace", "Ace%", "+", "Err", "Eff%"],
   X: ["Tot"],
   S: ["Tot", "#+", "Pos%", "#", "Perf%", "="],
+  FB: ["Tot", "#+", "Pos%", "#", "Perf%", "="],
 };
 function tbl(k, rows) {
   return `<div class="tw"><table><thead><tr><th>Voce</th>${HD[k].map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${rows.map(([l, v, c]) => `<tr class="${c || ""}"><td>${l}</td>${v.map((x) => `<td>${x}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
@@ -4871,7 +4904,7 @@ function atSheet(st, m) {
   if (!pObj) return `<div>Nessuna giocatrice disponibile.</div>`;
   const L = (st.log || []).filter((e) => !e.o && String(e.p) === String(pObj.n) && SK[e.k]);
 
-  const bySkill = ["B", "R", "A", "M", "D", "S"].map((k) => {
+  const bySkill = ["B", "R", "A", "M", "D", "S", "FB"].map((k) => {
     const sub = L.filter((e) => e.k === k);
     const gCounts = ["#", "+", "!", "-", "/"].map((g) => sub.filter((e) => e.g === g).length);
     const err = sub.filter((e) => e.g === "=").length;
@@ -6321,6 +6354,74 @@ function edBox(e) {
   </div>`;
 }
 
+// Legge dalla pagina "Regole e codici" tutti i campi modificati e li scrive in cfg
+function collectRulesFromDom(cfg) {
+  const splitTokens = (val) => val.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean);
+    Object.keys(cfg.skills).forEach((k) => {
+      const codeEl = $("cfg_sk_code_" + k), keyEl = $("cfg_sk_key_" + k), aliasEl = $("cfg_sk_alias_" + k);
+      if (codeEl && codeEl.value.trim()) cfg.skills[k].code = codeEl.value.trim().toUpperCase();
+      if (keyEl) cfg.skills[k].key = keyEl.value.trim().toLowerCase();
+      if (aliasEl) cfg.skills[k].aliases = splitTokens(aliasEl.value).map((x) => x.toUpperCase());
+    });
+    GRADE_META.forEach((gm, idx) => {
+      const el = $("cfg_gd_alias_" + idx);
+      if (el) cfg.gradeAliases[gm.grade] = splitTokens(el.value);
+    });
+    TIPI_ALZATA.forEach((tName, idx) => {
+      const el = $("cfg_at_alias_" + idx);
+      if (el) cfg.attackAliases[tName] = splitTokens(el.value);
+    });
+    const k1El = $("cfg_ph_k1"), k2El = $("cfg_ph_k2"), frEl = $("cfg_ph_fr");
+    if (k1El) cfg.phases.k1Codes = splitTokens(k1El.value).map((x) => x.toUpperCase());
+    if (k2El) cfg.phases.k2Codes = splitTokens(k2El.value).map((x) => x.toUpperCase());
+    if (frEl) cfg.phases.freeCodes = splitTokens(frEl.value).map((x) => x.toUpperCase());
+
+    TIPI_BATTUTA.forEach((bName, idx) => {
+      const el = $("cfg_bt_alias_" + idx);
+      if (el) cfg.serviceAliases[bName] = splitTokens(el.value);
+    });
+    TIPI_PALLA_DIF.forEach((dName, idx) => {
+      const el = $("cfg_df_alias_" + idx);
+      if (el) cfg.ballTypeAliases[dName] = splitTokens(el.value);
+    });
+    TIPI_COLPO.forEach((cName, idx) => {
+      const el = $("cfg_ca_alias_" + idx);
+      if (el) cfg.phases.shotAliases[cName] = splitTokens(el.value);
+    });
+    QUALITA_PALLA.forEach((qName, idx) => {
+      const el = $("cfg_qa_alias_" + idx);
+      if (el) cfg.phases.ballQualAliases[qName] = splitTokens(el.value);
+    });
+    ZONE_CAMPO_ALIAS.forEach((zName, idx) => {
+      const el = $("cfg_zn_alias_" + idx);
+      if (el) cfg.zoneAliases[zName] = splitTokens(el.value);
+    });
+    RUOLI_CAMPO_ALIAS.forEach((rName, idx) => {
+      const el = $("cfg_rl_alias_" + idx);
+      if (el) cfg.roleAliases[rName] = splitTokens(el.value).map((x) => x.toUpperCase());
+    });
+
+  // regole punto (cosa chiude lo scambio)
+  const readRules = (prefix, arr) => (arr || []).map((r, i) => {
+    const sk = $(prefix + "_sk_" + i), gd = $(prefix + "_gd_" + i);
+    return sk && gd ? { skill: sk.value, grade: gd.value } : r;
+  });
+  if (cfg.rally) {
+    cfg.rally.winPoints = readRules("cfg_wp", cfg.rally.winPoints);
+    cfg.rally.lossPoints = readRules("cfg_lp", cfg.rally.lossPoints);
+  }
+  // collegamenti automatici tra azioni
+  const skName = (k) => (cfg.skills[k] && cfg.skills[k].name) || k;
+  cfg.links = (cfg.links || []).map((r, i) => {
+    const en = $("cfg_lk_en_" + i);
+    if (!en) return r;
+    const get = (x) => $("cfg_lk_" + x + "_" + i).value;
+    const n = Object.assign({}, r, { enabled: en.checked, fromSkill: get("fs"), fromGrade: get("fg"), toSkill: get("ts"), setGrade: get("sg"), pointTo: get("pt") });
+    n.name = `${skName(n.fromSkill)} (${n.fromGrade}) -> ${skName(n.toSkill)} avversario (${n.setGrade})`;
+    return n;
+  });
+}
+
 // ==================== CONFIGURAZIONE CODICI & REGOLE ====================
 function vConfig() {
   const cfg = (typeof S !== "undefined" && S.rulesCfg) || loadRulesConfig();
@@ -6374,6 +6475,42 @@ function vConfig() {
         ${TIPI_PALLA_DIF.map((dName, idx) => `<tr><td><b>${esc(dName)}</b></td><td><input id="cfg_df_alias_${idx}" value="${esc((cfg.ballTypeAliases[dName] || []).join(" "))}"></td></tr>`).join("")}
       </tbody></table></div>
     </div>
+
+    ${(() => {
+      const skOpts = (sel) => Object.entries(cfg.skills).map(([k, it]) => `<option value="${esc(k)}"${k === sel ? " selected" : ""}>${esc(it.name)}</option>`).join("");
+      const gdOpts = (sel) => GRADE_META.map((gm) => `<option value="${esc(gm.grade)}"${gm.grade === sel ? " selected" : ""}>${esc(gm.grade)} ${esc(gm.name)}</option>`).join("");
+      const ruleRows = (list, prefix, type) => (list || []).map((r, i) => `<tr>
+        <td><select id="${prefix}_sk_${i}">${skOpts(r.skill)}</select></td>
+        <td><select id="${prefix}_gd_${i}">${gdOpts(r.grade)}</select></td>
+        <td>${bt("cfg_rule_del", type + ":" + i, "🗑", "sm")}</td>
+      </tr>`).join("") || `<tr><td colspan="3" class="sm2">Nessuna regola</td></tr>`;
+      const ptOpts = (sel) => [["self", "a chi ha fatto la nuova azione"], ["opp", "all'avversario di chi ha fatto la nuova azione"], ["none", "a nessuno (non assegnare)"]]
+        .map(([v, l]) => `<option value="${v}"${v === sel ? " selected" : ""}>${l}</option>`).join("");
+      const linkRows = (cfg.links || []).map((r, i) => `<tr>
+        <td><input type="checkbox" id="cfg_lk_en_${i}"${r.enabled ? " checked" : ""}></td>
+        <td><select id="cfg_lk_fs_${i}">${skOpts(r.fromSkill)}</select> <select id="cfg_lk_fg_${i}">${gdOpts(r.fromGrade)}</select></td>
+        <td><select id="cfg_lk_ts_${i}">${skOpts(r.toSkill)}</select> avversaria → <select id="cfg_lk_sg_${i}">${gdOpts(r.setGrade)}</select></td>
+        <td><select id="cfg_lk_pt_${i}">${ptOpts(r.pointTo)}</select></td>
+        <td>${bt("cfg_link_del", "" + i, "🗑", "sm")}</td>
+      </tr>`).join("") || `<tr><td colspan="5" class="sm2">Nessun collegamento</td></tr>`;
+      return `
+    <div class="lbl">6 · Regole Punto (cosa chiude lo scambio)</div>
+    <div class="sm2" style="margin-bottom:6px">Quando registri un fondamentale con l'esito scelto, il punto viene assegnato in automatico. Ricordati di premere <b>Salva Regole</b>.</div>
+    <div class="two">
+      <div class="tw"><table><thead><tr><th>Punto per chi la fa</th><th>Esito</th><th></th></tr></thead><tbody>
+        ${ruleRows(cfg.rally.winPoints, "cfg_wp", "win")}
+      </tbody></table><div style="margin-top:6px">${bt("cfg_rule_add", "win", "＋ Aggiungi regola", "sm")}</div></div>
+      <div class="tw"><table><thead><tr><th>Punto all'avversario</th><th>Esito</th><th></th></tr></thead><tbody>
+        ${ruleRows(cfg.rally.lossPoints, "cfg_lp", "loss")}
+      </tbody></table><div style="margin-top:6px">${bt("cfg_rule_add", "loss", "＋ Aggiungi regola", "sm")}</div></div>
+    </div>
+
+    <div class="lbl">7 · Collegamenti Automatici tra Azioni</div>
+    <div class="sm2" style="margin-bottom:6px">Quando registri la prima azione, l'ultima azione indicata dell'avversario cambia esito (es. Muro # → attacco avversario murato /) e il punto va a chi scegli.</div>
+    <div class="tw"><table><thead><tr><th>Attiva</th><th>Quando registro</th><th>L'azione avversaria diventa</th><th>Punto</th><th></th></tr></thead><tbody>
+      ${linkRows}
+    </tbody></table><div style="margin-top:6px">${bt("cfg_link_add", "", "＋ Aggiungi collegamento", "sm")}</div></div>`;
+    })()}
   </div>`;
 }
 
@@ -6434,8 +6571,9 @@ function formatActionAsDvCode(e) {
   const pref = e.o ? "a" : "*";
   const num = String(e.p).padStart(2, "0");
   const m = e.m || {};
-  const z1 = e.k === "B" ? (m.zs || "") : (m.z || "");
-  const z2 = m.ze || "";
+  let z1 = (e.k === "B" || e.k === "FB") ? dvZoneDigit(m.zs) : appAttackStartToDvDigit(m.z);
+  const z2 = dvZoneDigit(m.ze);
+  if (!z1 && z2) z1 = "0"; // segnaposto: mantiene l'arrivo come seconda cifra
   const cfg = (typeof S !== "undefined" && S.rulesCfg) || loadRulesConfig();
   const sk = (cfg.skills && cfg.skills[e.k] && cfg.skills[e.k].code) || e.k;
   return `${pref}${num}${sk}${e.g}${z1}${z2}`;
@@ -6511,9 +6649,9 @@ function parseDvCode(raw) {
   // Zone partenza e arrivo (2 cifre rimanenti)
   const zMatch = str.match(/(\d)(\d)?/);
   if (zMatch) {
-    if (skill === "B") modObj.zs = zMatch[1];
-    else if (skill === "A") modObj.z = zMatch[1];
-    if (zMatch[2] && (skill === "A" || skill === "B")) modObj.ze = zMatch[2];
+    if (skill === "B" || skill === "FB") { if (zMatch[1] !== "0") modObj.zs = zMatch[1]; }
+    else if (skill === "A") { const zz = zMatch[1] !== "0" ? dvAttackStartToApp(zMatch[1]) : ""; if (zz) modObj.z = zz; }
+    if (zMatch[2] && (skill === "A" || skill === "B" || skill === "FB")) modObj.ze = zMatch[2];
   }
 
   return { team, pNum, skill, grade, mod: modObj };
@@ -6551,14 +6689,152 @@ function executeDvCode(raw) {
   return true;
 }
 
-function downloadDvw(m) {
-  if (!m) return;
-  const now = new Date();
-  const dStr = `${String(now.getDate()).padStart(2, "0")}/${String(now.getMonth() + 1).padStart(2, "0")}/${now.getFullYear()}`;
-  const tStr = `${String(now.getHours()).padStart(2, "0")}.${String(now.getMinutes()).padStart(2, "0")}.00`;
-  const lines = [];
+function downloadDvw(v) {
+  const id = (typeof v === "string" && v) ? v : MID;
+  if (!id) return;
+  let st = null;
+  if (id === MID) st = S;
+  else { try { st = JSON.parse(localStorage.getItem("scoutM_" + id)); } catch (e) {} }
+  if (!st) { xs("Partita non trovata", 2400); return; }
+  const meta = (IX || []).find((x) => x.id == id) || {};
 
-  // 1. HEADER & MATCH
+  const pad2 = (n) => String(n).padStart(2, "0");
+  const clean = (x) => String(x == null ? "" : x).replace(/[\r\n;]+/g, " ").trim();
+  const now = new Date();
+  const dStr = `${pad2(now.getDate())}/${pad2(now.getMonth() + 1)}/${now.getFullYear()}`;
+  const tStr = `${pad2(now.getHours())}.${pad2(now.getMinutes())}.00`;
+  const mDate = meta.date ? String(meta.date).split("-").reverse().join("/") : dStr;
+  const yy = meta.date ? +String(meta.date).slice(0, 4) : now.getFullYear();
+  const mm = meta.date ? +String(meta.date).slice(5, 7) : now.getMonth() + 1;
+  const season = mm >= 7 ? `${yy}/${yy + 1}` : `${yy - 1}/${yy}`;
+
+  const tName0 = clean(meta.t) || "Noi";
+  const tName1 = clean(meta.a) || "Avversari";
+  const code3 = (n, fb) => (String(n).replace(/[^A-Za-z0-9]/g, "").slice(0, 3).toUpperCase() || fb).padEnd(3, "X");
+  const t0Code = code3(tName0, "HOM");
+  let t1Code = code3(tName1, "GUE");
+  if (t1Code === t0Code) t1Code = t1Code.slice(0, 2) + "2";
+
+  const R0 = st.pl || [], R1 = st.op || [];
+  const log = st.log || [];
+
+  // ---------- tabelle di conversione app -> codice DV ----------
+  const skillMap = { B: "S", R: "R", A: "A", M: "B", D: "D", S: "E", FB: "F" };   // X (errore generico) non ha codice DV
+  const serveType = { "Float": "Q", "Salto": "H", "S.float": "M" };      // Q float, H salto, M salto-float
+  const tempoMap = { "Alta": "H", "Super": "U", "Tesa": "T", "Mezza": "M", "Fast": "N", "Quick": "Q", "Seconda": "O",
+    "1": "Q", "2": "Q", "7": "Q", "C": "Q", "5": "H", "6": "H", "8": "H", "Pipe": "M" };
+  const comboMap = { "1": "X7", "7": "X7", "5": "X5", "6": "X6", "2": "X2", "Pipe": "XP", "8": "X8", "C": "CF" };
+
+  const dvZone = (z) => dvZoneDigit(z);
+  const atkStart = (z) => appAttackStartToDvDigit(z);
+
+  // ---------- helper formazione / palleggiatrice ----------
+  const luFix = (arr) => { const a = (arr || []).slice(0, 6); while (a.length < 6) a.push(0); return a; };
+  const setterNum = (lu, roster) => {
+    const ln = lu.map(String);
+    const p = roster.find((x) => x.r === "P" && ln.includes(String(x.n)));
+    return p ? String(p.n) : String(lu[0] || "");
+  };
+  const setterPos = (lu, roster, fb) => {
+    const i = lu.map(String).indexOf(setterNum(lu, roster));
+    return i >= 0 ? i + 1 : ((fb || 0) % 6) + 1;
+  };
+  const hhmmss = (ts) => {
+    const d = new Date((ts || now.getTime() / 1000) * 1000);
+    return `${pad2(d.getHours())}.${pad2(d.getMinutes())}.${pad2(d.getSeconds())}`;
+  };
+
+  // ---------- corpo [3SCOUT] ----------
+  const byset = {};
+  log.forEach((e) => { const k = e.s || 1; (byset[k] = byset[k] || []).push(e); });
+  const setNos = Object.keys(byset).map(Number).sort((a, b) => a - b);
+  const scout = [];
+  const replayScore = {};
+  const setStartLu = {};
+
+  setNos.forEach((sn) => {
+    const ents = byset[sn];
+    const b0 = ents[0].b || {};
+    const init = (st.init && st.init[sn]) || {};
+    let lu0 = luFix((init.lu && init.lu.length === 6) ? init.lu : (b0.lu || st.lu));
+    let lu1 = luFix((init.ol && init.ol.length === 6) ? init.ol : (b0.ol || st.ol));
+    setStartLu[sn] = { lu: lu0.slice(), ol: lu1.slice() };
+    let cu = b0.us || 0, ct = b0.th || 0;
+
+    // riga generica con colonne DV: 0 codice | 4-6 coordinate | 7 ora | 8 set | 9-10 pos. palleggiatrice |
+    // 11 n. file video | 12 tempo video | 16-21 formazione casa | 22-27 formazione ospiti
+    const row = (code, lu_a, lu_b, ts, vt) => {
+      const sp0 = setterPos(lu_a, R0, (ents[0].b || {}).rot);
+      const sp1 = setterPos(lu_b, R1, (ents[0].b || {}).orot);
+      return [code, "", "", "", "", "", "", hhmmss(ts), sn, sp0, sp1,
+        vt !== undefined && vt !== null && vt !== "" ? 1 : "", vt !== undefined && vt !== null && vt !== "" ? Math.round(vt) : "",
+        "", "", "", ...lu_a.map(pad2), ...lu_b.map(pad2)].join(";");
+    };
+
+    const ts0 = ents[0].ts;
+    scout.push(row(`*P${pad2(setterNum(lu0, R0) || 0)}>LUp`, lu0, lu1, ts0));
+    scout.push(row(`aP${pad2(setterNum(lu1, R1) || 0)}>LUp`, lu0, lu1, ts0));
+    scout.push(row(`*z${setterPos(lu0, R0, 0)}>LUp`, lu0, lu1, ts0));
+    scout.push(row(`az${setterPos(lu1, R1, 0)}>LUp`, lu0, lu1, ts0));
+
+    ents.forEach((e) => {
+      const b = e.b || {};
+      const l0 = luFix(b.lu || lu0), l1 = luFix(b.ol || lu1);
+      lu0 = l0; lu1 = l1;
+      const m = e.m || {};
+      const tc = e.o ? "a" : "*";
+      const dvSk = skillMap[e.k];
+
+      if (dvSk) {
+        const pnum = /^\d+$/.test(String(e.p)) ? pad2(e.p) : "00";
+        let type = "~", combo = "~~", z1 = "~", z2 = "~", hit = "~", blk = "~";
+        if (e.k === "B") {
+          type = serveType[m.t] || "~";
+          z1 = dvZone(m.zs) || "~";
+          z2 = dvZone(m.ze) || "~";
+        } else if (e.k === "A") {
+          type = tempoMap[m.bs] || "H";
+          combo = comboMap[m.bs] || "~~";
+          z1 = atkStart(m.z) || "~";
+          z2 = dvZone(m.ze) || "~";
+          hit = m.ca === "Pallonetto" ? "T" : "H";
+          const bm = /^([1-3])/.exec(String(m.mu || ""));
+          if (bm) blk = bm[1];
+        } else if (e.k === "FB") {
+          z1 = dvZone(m.zs) || "~";
+          z2 = dvZone(m.ze) || "~";
+        } else if (e.k === "S") {
+          type = tempoMap[m.bs] || "H";
+          z2 = atkStart(m.st) || "~";
+        } else if (e.k === "R") {
+          type = serveType[m.bt] || "~";
+        }
+        let code = `${tc}${pnum}${dvSk}${type}${e.g}${combo}~${z1}${z2}~${hit}${blk}`;
+        code = code.replace(/~+$/, "");
+        scout.push(row(code, l0, l1, e.ts, e.vt));
+      }
+
+      if (e.pt === 1 || e.pt === 0) {
+        const homeScores = e.pt === 1;
+        if (homeScores) cu++; else ct++;
+        const sideout = homeScores ? !b.srv : !!b.srv;   // chi segna senza aver battuto, ruota
+        const pfx = homeScores ? "*" : "a";
+        let n0 = l0, n1 = l1;
+        if (sideout) { if (homeScores) n0 = l0.slice(1).concat(l0[0]); else n1 = l1.slice(1).concat(l1[0]); }
+        scout.push(row(`${pfx}p${pad2(cu)}:${pad2(ct)}`, n0, n1, e.ts));
+        if (sideout) {
+          scout.push(homeScores
+            ? row(`*z${setterPos(n0, R0, 0)}`, n0, n1, e.ts)
+            : row(`az${setterPos(n1, R1, 0)}`, n0, n1, e.ts));
+        }
+      }
+    });
+    replayScore[sn] = { us: cu, th: ct };
+    scout.push(`**${sn}set`);
+  });
+
+  // ---------- intestazione + sezioni ----------
+  const lines = [];
   lines.push("[3DATAVOLLEYSCOUT]");
   lines.push("FILEFORMAT: 2.0");
   lines.push(`GENERATOR-DAY: ${dStr} ${tStr}`);
@@ -6573,66 +6849,48 @@ function downloadDvw(m) {
   lines.push("LASTCHANGE-VER: 1.0");
 
   lines.push("[3MATCH]");
-  const mDate = m.dt ? m.dt.split("-").reverse().join("/") : dStr;
-  lines.push(`${mDate};00.00.00;2025/2026;${m.ch || "Campionato"};;Regular Season;1;${m.pl || ""};N;1;3;0;`);
+  lines.push(`${mDate};00.00.00;${season};${clean(meta.cat) || "Campionato"};;Regular Season;1;${clean(meta.place)};N;1;3;0;`);
   lines.push(";;;;;;;;;;;");
 
-  // 2. TEAMS
   lines.push("[3TEAMS]");
-  const t0Code = (m.t[0].n || "HOM").replace(/[^A-Za-z0-9]/g, "").slice(0, 3).toUpperCase().padEnd(3, "X");
-  const t1Code = (m.t[1].n || "GUE").replace(/[^A-Za-z0-9]/g, "").slice(0, 3).toUpperCase().padEnd(3, "X");
-  lines.push(`${t0Code};${m.t[0].n || "Casa"};0;${m.t[0].c || ""};;;;`);
-  lines.push(`${t1Code};${m.t[1].n || "Ospiti"};0;${m.t[1].c || ""};;;;`);
+  lines.push(`${t0Code};${tName0};0;;;;;`);
+  lines.push(`${t1Code};${tName1};0;;;;;`);
 
-  // 3. MORE & COMMENTS
   lines.push("[3MORE]");
   lines.push(";;;;;25;25;25;25;15;;;");
   lines.push("[3COMMENTS]");
-  lines.push(`${(m.nt || "").replace(/[\r\n;]+/g, " ")};;;;`);
+  lines.push(";;;;");
 
-  // 4. SET
   lines.push("[3SET]");
-  for (let i = 0; i < 5; i++) {
-    const s = m.s[i];
-    if (s && (s.us > 0 || s.th > 0 || (s.lg && s.lg.length > 0))) {
-      lines.push(`True;8-6;16-14;21-19;${s.us}-${s.th};15;`);
-    } else {
-      lines.push("True;;;;;");
-    }
+  for (let i = 1; i <= 5; i++) {
+    const sc = (st.sets || []).find((x) => x.s == i) || replayScore[i];
+    lines.push(sc ? `True;;;;${sc.us}-${sc.th};;` : "True;;;;;");
   }
 
-  // 5. PLAYERS (Mappatura ruoli standard Data Volley: 1=L, 2=S, 3=O, 4=C, 5=P)
-  const roleToDvNum = (r) => {
-    const up = (r || "").trim().toUpperCase();
-    if (up === "L") return "1";
-    if (up === "S" || up === "B") return "2";
-    if (up === "O") return "3";
-    if (up === "C") return "4";
-    if (up === "P") return "5";
-    return "0";
-  };
-
-  const fmtRoster = (teamIdx, plList) => {
+  // ruoli DV: 1=libero, 2=schiacciatrice, 3=opposto, 4=centrale, 5=palleggiatrice
+  const roleToDvNum = (r) => ({ L: "1", S: "2", B: "2", O: "3", C: "4", P: "5" }[(r || "").trim().toUpperCase()] || "");
+  const fmtRoster = (teamIdx, plList, tCode) => {
     (plList || []).forEach((p, idx) => {
-      const num = String(p.n || idx + 1).padStart(2, "0");
-      const parts = (p.nm || `Giocatore ${num}`).trim().split(/\s+/);
-      const sur = parts.length > 1 ? parts.slice(1).join(" ") : parts[0];
-      const nam = parts.length > 1 ? parts[0] : "";
+      const num = pad2(parseInt(p.n, 10) || (idx + 1));
+      const parts = clean(p.name || p.nm || `Giocatrice ${num}`).split(/\s+/);
+      const sur = parts[0] || "";
+      const nam = parts.slice(1).join(" ");
       const roleUp = (p.r || "").trim().toUpperCase();
-      const roleNum = roleToDvNum(roleUp);
-      const isLibero = roleUp === "L" ? "L" : "";
-      const pCode = `${teamIdx === 0 ? t0Code : t1Code}-${num}`;
-      // Colonne DVW: team;num;id;?;?;?;?;?;cognome;nome;soprannome;ruoloNum;libero;capitano;...
-      lines.push(`${teamIdx};${num};${idx + 1};;;;;;${sur};${nam};;${roleNum};${isLibero};;${pCode};;;;;;;;False;`);
+      // posizione di partenza per set 1..5 (dalla formazione iniziale del set)
+      const sp = [];
+      for (let sn = 1; sn <= 5; sn++) {
+        const arr = setStartLu[sn] ? (teamIdx === 0 ? setStartLu[sn].lu : setStartLu[sn].ol) : null;
+        const i = arr ? arr.map(String).indexOf(String(p.n)) : -1;
+        sp.push(i >= 0 ? String(i + 1) : "");
+      }
+      lines.push([teamIdx, num, idx + 1, ...sp, `${tCode}-${num}`, sur, nam, "", roleUp === "L" ? "L" : "", roleToDvNum(roleUp), "", "", "", "", "", "", "", "", "", "", ""].join(";"));
     });
   };
-
   lines.push("[3PLAYERS-H]");
-  fmtRoster(0, m.t[0].pl);
+  fmtRoster(0, R0, t0Code);
   lines.push("[3PLAYERS-V]");
-  fmtRoster(1, m.t[1].pl);
+  fmtRoster(1, R1, t1Code);
 
-  // 6. ATTACK COMBINATIONS & SETTER CALLS
   lines.push("[3ATTACKCOMBINATION]");
   lines.push("X1;4;L;Q;Vel. 4;4;65280;4227072;H;0;;");
   lines.push("X2;2;L;Q;Vel. 2;2;65280;4227072;H;0;;");
@@ -6653,133 +6911,15 @@ function downloadDvw(m) {
   lines.push("S#;R#;A#;B#;D#;E#;F#;");
 
   lines.push("[3RESERVE]");
-
-  // 7. SCOUT
   lines.push("[3SCOUT]");
-
-  const skillMap = { S: "S", R: "R", A: "A", M: "B", D: "D", P: "E", F: "F" };
-  const atkTypeMap = { P: "Q", S: "T", A: "H", V: "N", F: "O" };
-  const combMap = { "1": "X7", "7": "X7", "5": "X5", "6": "X6", "2": "X2", P: "XP", "8": "X8", C: "CF", S: "X5", A: "X1", M: "XP" };
-  const valMap = { "++": "#", "+": "+", "!": "!", "-": "-", "--": "/", "=": "=" };
-
-  const formatCoord = (pt) => {
-    if (!pt || typeof pt.x !== "number" || typeof pt.y !== "number") return "";
-    // Coordinate DVW standard: 4 cifre X (0000-0100 -> scalato) + 4 cifre Y
-    const x = Math.max(0, Math.min(9999, Math.round(pt.x * 100)));
-    const y = Math.max(0, Math.min(9999, Math.round(pt.y * 100)));
-    return String(x).padStart(4, "0") + String(y).padStart(4, "0");
-  };
-
-  for (let sIdx = 0; sIdx < 5; sIdx++) {
-    const s = m.s[sIdx];
-    if (!s || !s.lg || s.lg.length === 0) continue;
-
-    // Formazione iniziale del set (se presente in s.ln, altrimenti 1..6)
-    const lu0 = s.ln && s.ln[0] ? s.ln[0] : [1, 2, 3, 4, 5, 6];
-    const lu1 = s.ln && s.ln[1] ? s.ln[1] : [1, 2, 3, 4, 5, 6];
-    const pSetter0 = lu0[0] || 1;
-    const pSetter1 = lu1[0] || 1;
-
-    // Ordine cronologico dall'inizio alla fine del set
-    const setLogs = [...s.lg].reverse();
-    let curUs = 0;
-    let curTh = 0;
-    let curRot0 = 1;
-    let curRot1 = 1;
-    let lastSrvTeam = s.fs !== undefined ? s.fs : 0;
-
-    // Inserimento formazione iniziale standard DVW prima di **Xset
-    for (let z = 0; z < 6; z++) {
-      lines.push(`*P${String(lu0[z] || 0).padStart(2, "0")}>LUp;;;;;;;;;;;;;;;;;${String(curUs).padStart(2, "0")}-${String(curTh).padStart(2, "0")};${curRot0};${curRot1};;;;;${lu0.map(n => String(n).padStart(2, "0")).join(";")};${lu1.map(n => String(n).padStart(2, "0")).join(";")};`);
-    }
-    for (let z = 0; z < 6; z++) {
-      lines.push(`aP${String(lu1[z] || 0).padStart(2, "0")}>LUp;;;;;;;;;;;;;;;;;${String(curUs).padStart(2, "0")}-${String(curTh).padStart(2, "0")};${curRot0};${curRot1};;;;;${lu0.map(n => String(n).padStart(2, "0")).join(";")};${lu1.map(n => String(n).padStart(2, "0")).join(";")};`);
-    }
-
-    setLogs.forEach((e) => {
-      if (e.sys) {
-        // Sostituzioni o Time-out
-        if (e.sys.includes("Time-out") || e.sys.includes("TO")) {
-          const pfx = e.t === 1 ? "a" : "*";
-          lines.push(`${pfx}T;;;;;;;;;;;;;;;;;${String(curUs).padStart(2, "0")}-${String(curTh).padStart(2, "0")};${curRot0};${curRot1};;;;;;;;;;;`);
-        }
-        return;
-      }
-
-      const teamChar = e.t === 1 ? "a" : "*";
-      const pNum = String(e.n || 0).padStart(2, "0");
-      const dvSkill = skillMap[e.f] || "F";
-      const dvType = e.f === "S" ? (e.bt === "S" ? "Q" : e.bt === "F" ? "M" : "H") : (atkTypeMap[e.tAlz] || "H");
-      const dvEval = valMap[e.v] || "+";
-
-      let combCode = "~~";
-      if (e.f === "A") {
-        combCode = combMap[e.c] || (e.tAlz === "P" ? "X7" : e.tAlz === "S" ? "X5" : "X1");
-      } else if (e.f === "P") {
-        combCode = "KE";
-      }
-
-      const zStart = e.zs ? String(e.zs) : "~";
-      const zEnd = e.ze ? String(e.ze) : "~";
-      const zSub = e.zSub ? String(e.zSub) : "~";
-      const skillTypeChar = e.f === "A" ? (e.tCol === "P" ? "P" : e.tCol === "M" ? "T" : "H") : "~";
-      const blockers = e.f === "A" && e.nM ? String(e.nM) : "~";
-
-      // Stringa codice DVW standard a 20+ caratteri
-      const code = `${teamChar}${pNum}${dvSkill}${dvType}${dvEval}${combCode}~${zStart}${zEnd}${zSub}${skillTypeChar}${blockers}~~~`;
-
-      const cStart = formatCoord(e.ps);
-      const cMid = "";
-      const cEnd = formatCoord(e.pe);
-      const ts = e.tm !== null && e.tm !== undefined ? Math.floor(e.tm) : "";
-      const scoreStr = `${String(curUs).padStart(2, "0")}-${String(curTh).padStart(2, "0")}`;
-
-      const row = [
-        code, "", "", "", cStart, cMid, cEnd, "",
-        ts, sIdx + 1, curRot0, curRot1,
-        String(pSetter0).padStart(2, "0"), String(pSetter1).padStart(2, "0"),
-        "", "", "", scoreStr, curRot0, curRot1,
-        "", "", "", "",
-        ...lu0.map(n => String(n).padStart(2, "0")),
-        ...lu1.map(n => String(n).padStart(2, "0")),
-        ""
-      ].join(";");
-
-      lines.push(row);
-
-      // Assegnazione punto & rotazione al cambio palla
-      if (e.pt === 1 || e.pt === 0) {
-        const pointToHome = e.pt === 1;
-        if (pointToHome) {
-          curUs++;
-          if (lastSrvTeam === 1) {
-            curRot0 = (curRot0 % 6) + 1;
-            lastSrvTeam = 0;
-            lines.push(`*z${curRot0};;;;;;;;;;;;;;;;;${String(curUs).padStart(2, "0")}-${String(curTh).padStart(2, "0")};${curRot0};${curRot1};;;;;;;;;;;`);
-          }
-        } else {
-          curTh++;
-          if (lastSrvTeam === 0) {
-            curRot1 = (curRot1 % 6) + 1;
-            lastSrvTeam = 1;
-            lines.push(`az${curRot1};;;;;;;;;;;;;;;;;${String(curUs).padStart(2, "0")}-${String(curTh).padStart(2, "0")};${curRot0};${curRot1};;;;;;;;;;;`);
-          }
-        }
-        const ptPfx = pointToHome ? "*" : "a";
-        const newScoreStr = `${String(curUs).padStart(2, "0")}-${String(curTh).padStart(2, "0")}`;
-        lines.push(`${ptPfx}p${newScoreStr};;;;;;;;;;;;;;;;;${newScoreStr};${curRot0};${curRot1};;;;;;;;;;;`);
-      }
-    });
-
-    lines.push(`**${sIdx + 1}set`);
-  }
+  scout.forEach((l) => lines.push(l));
 
   const blob = new Blob([lines.join("\r\n")], { type: "text/plain;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  const safeName = (m.t[0].n || "Match").replace(/[^a-z0-9]/gi, "_");
+  const safe = (n) => String(n).replace(/[^a-z0-9]/gi, "_");
   a.href = url;
-  a.download = `${safeName}_vs_${(m.t[1].n || "Ospiti").replace(/[^a-z0-9]/gi, "_")}.dvw`;
+  a.download = `${safe(tName0)}_vs_${safe(tName1)}.dvw`;
   a.click();
   URL.revokeObjectURL(url);
 }
