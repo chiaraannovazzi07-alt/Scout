@@ -524,6 +524,30 @@ textarea { min-height: 160px; }
 .adv-eff-pos{color:#22c55e;font-weight:700}
 .adv-eff-neg{color:#ef4444;font-weight:700}
 .adv-dist-bar{display:inline-block;height:6px;background:var(--ac);border-radius:3px;margin-right:5px;vertical-align:middle}
+.meet-grid { grid-template-columns: 1fr 395px; }
+.meet-flt-box {
+  background: #0b1120;
+  border: 1px solid #1f2937;
+  border-radius: 8px;
+  padding: 7px;
+  margin-bottom: 6px;
+}
+.meet-flt-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+}
+.meet-sel, .meet-search {
+  width: 100%;
+  background: #161f33;
+  color: #f8fafc;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  padding: 4px 6px;
+  font-size: 11px;
+  min-height: 28px;
+}
+.meet-search { grid-column: 1 / -1; }
 </style></head><body>
 
 <!-- MEETING / VIDEOANALYSIS PRESENTATION OVERLAY -->
@@ -566,8 +590,15 @@ textarea { min-height: 160px; }
         </div>
       </div>
     </div>
-    <div class="meet-side">
-      <div style="font-size:10px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:5px">Filtro Rapido Riunione</div>
+<div class="meet-side">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;gap:4px">
+        <span style="font-size:10px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:0.06em">Filtri Azioni Lavagna</span>
+        <div style="display:flex;gap:4px">
+          <button class="sm on" id="meet-adv-btn" data-a="meet_tog_adv" style="min-height:24px;padding:2px 7px;font-size:11px">🎛️ Dettagli</button>
+          <button class="sm" id="meet-reset-btn" data-a="meet_reset" style="min-height:24px;padding:2px 7px;font-size:11px">↺ Reset</button>
+        </div>
+      </div>
+
       <div class="row" style="margin-bottom:5px">
         <button class="sm" id="mf-all" data-a="meet_flt" data-v="all">Tutte</button>
         <button class="sm" id="mf-star" data-a="meet_flt" data-v="star">⭐ Chiave</button>
@@ -575,6 +606,11 @@ textarea { min-height: 160px; }
         <button class="sm" id="mf-pt" data-a="meet_flt" data-v="pt">🔥 Punti</button>
         <button class="sm" id="mf-clutch" data-a="meet_flt" data-v="clutch">⚡ 20+</button>
       </div>
+
+      <div class="meet-flt-box" id="meet-adv-box">
+        <div class="meet-flt-grid" id="meet-flt-grid"></div>
+      </div>
+
       <div style="display:flex;align-items:center;justify-content:space-between;font-size:11px;color:#94a3b8;padding:3px 2px">
         <span id="meet-count">0 clip</span>
         <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
@@ -782,6 +818,22 @@ try { advSavedViews = JSON.parse(localStorage.getItem("scoutAdvViews") || "[]");
 const saveAdvViews = () => { try { localStorage.setItem("scoutAdvViews", JSON.stringify(advSavedViews)); } catch (e) {} stampNow(); dirSched(); };
 
 let meetCustomClips = null; // Playlist temporanea lanciata dall'Analisi Avanzata
+let meetAdvOpen = true;
+function defaultMeetAdv() {
+  return {
+    team: "all",   // "all" | "0" (Noi) | "1" (Avversari)
+    set: "all",    // "all" | "1".."5"
+    skill: "all",  // "all" | "R" | "D" | "A" | "M" | "B" | "S" | "X"
+    grade: "all",  // "all" | "#" | "+" | "!" | "-" | "/" | "="
+    player: "all", // "all" | numero maglia
+    rot: "all",    // "all" | "1".."6"
+    phase: "all",  // "all" | "K1" | "K2" | "Free"
+    combo: "all",  // "all" | combinazione / colpo
+    zone: "all",   // "all" | zona partenza/arrivo
+    search: ""     // testo libero (note tattiche o codice DV)
+  };
+}
+let meetAdv = defaultMeetAdv();
 
 const ADV_DIMS = [
   ["player", "Giocatrice"],
@@ -2663,14 +2715,44 @@ const H = {
     const inp = $("ed-note-in");
     if (inp && ed !== null && S.log[ed]) { S.log[ed].note = inp.value.trim(); save(); render(); }
   },
-  meet_open: () => { 
+  meet_open: () => {
     const d = $("vd");
     if (!d || !d.src) { xs("Carica o collega prima il video della partita", 2600); return; }
     d.pause();
-    meetOpen = true; meetFilter = "all"; meetIdx = 0; meetDrawing = false; renderMeeting();
+    meetCustomClips = null;
+    meetOpen = true;
+    meetFilter = "all";
+    meetAdv = defaultMeetAdv();
+    meetIdx = 0;
+    meetDrawing = false;
+    renderMeeting();
   },
-  meet_close: () => { meetCustomClips = null; meetOpen = false; const mv = $("meet-vd"); if (mv) mv.pause(); $("meeting-overlay").style.display = "none"; },
-  meet_flt: (v) => { meetCustomClips = null; meetFilter = v; meetIdx = 0; renderMeeting(); },
+  meet_close: () => {
+    meetCustomClips = null;
+    meetOpen = false;
+    const mv = $("meet-vd");
+    if (mv) mv.pause();
+    $("meeting-overlay").style.display = "none";
+  },
+  meet_flt: (v) => {
+    meetCustomClips = null;
+    meetFilter = v;
+    meetIdx = 0;
+    renderMeeting();
+  },
+  meet_tog_adv: () => {
+    meetAdvOpen = !meetAdvOpen;
+    const box = $("meet-adv-box"), btn = $("meet-adv-btn");
+    if (box) box.style.display = meetAdvOpen ? "block" : "none";
+    if (btn) btn.classList.toggle("on", meetAdvOpen);
+  },
+  meet_reset: () => {
+    meetCustomClips = null;
+    meetFilter = "all";
+    meetAdv = defaultMeetAdv();
+    meetIdx = 0;
+    renderMeeting();
+  },
   meet_pick: (v) => { meetIdx = +v; playMeetingClip(meetIdx); },
   meet_prev: () => { if (meetIdx > 0) { meetIdx--; playMeetingClip(meetIdx); } },
   meet_next: () => { const list = getMeetingClips(); if (meetIdx < list.length - 1) { meetIdx++; playMeetingClip(meetIdx); } },
@@ -3050,7 +3132,26 @@ document.addEventListener("click", (e) => {
 document.addEventListener("change", (e) => {
   const c = e.target.dataset.c;
   if (c === "adv_set") { advCfg[e.target.dataset.f] = e.target.value; render(); return; }
+  if (c === "meet_set") {
+    meetCustomClips = null;
+    const f = e.target.dataset.f;
+    meetAdv[f] = e.target.value;
+    if (f === "team") meetAdv.player = "all"; // reset giocatrice se cambi squadra
+    meetIdx = 0;
+    renderMeeting();
+    return;
+  }
   if (c) H[c](e.target.value);
+});
+document.addEventListener("input", (e) => {
+  if (e.target && e.target.id === "meet-search-in") {
+    meetCustomClips = null;
+    meetAdv.search = e.target.value;
+    meetIdx = 0;
+    const clips = getMeetingClips();
+    renderMeetingList(clips);
+    if (clips.length) playMeetingClip(0);
+  }
 });
 
 // ==================== MEMORIA PERSISTENTE PER I VIDEO & AUTO-PLAYLIST ====================
@@ -5758,12 +5859,46 @@ function getMeetingClips() {
   if (Array.isArray(meetCustomClips) && meetCustomClips.length) {
     return meetCustomClips.map((idx) => ({ e: S.log[idx], idx })).filter((x) => x.e && sT(x.e) !== "");
   }
+  const q = (meetAdv.search || "").trim().toLowerCase();
+
   return S.log.map((e, idx) => ({ e, idx })).filter(({ e }) => {
     if (!e.p || !SK[e.k] || sT(e) === "") return false;
-    if (meetFilter === "star") return !!e.star;
-    if (meetFilter === "err") return e.g === "=" || (e.k === "A" && e.g === "/");
-    if (meetFilter === "pt") return e.g === "#" && "AMB".includes(e.k);
-    if (meetFilter === "clutch") return e.b && (e.b.us >= 20 || e.b.th >= 20);
+
+    // 1. Filtro rapido (pulsanti in alto)
+    if (meetFilter === "star" && !e.star) return false;
+    if (meetFilter === "err" && !(e.g === "=" || (e.k === "A" && e.g === "/"))) return false;
+    if (meetFilter === "pt" && !(e.g === "#" && "AMB".includes(e.k))) return false;
+    if (meetFilter === "clutch" && !(e.b && (e.b.us >= 20 || e.b.th >= 20))) return false;
+
+    // 2. Filtri dettagliati
+    const isOpp = !!e.o;
+    if (meetAdv.team !== "all" && (isOpp ? "1" : "0") !== meetAdv.team) return false;
+    if (meetAdv.set !== "all" && String(e.s) !== String(meetAdv.set)) return false;
+    if (meetAdv.skill !== "all" && e.k !== meetAdv.skill) return false;
+    if (meetAdv.grade !== "all" && e.g !== meetAdv.grade) return false;
+    if (meetAdv.player !== "all" && String(e.p) !== String(meetAdv.player)) return false;
+
+    const rotNum = isOpp
+      ? (e.b && e.b.orot !== undefined ? (e.b.orot % 6) + 1 : e.r)
+      : (e.b && e.b.rot !== undefined ? (e.b.rot % 6) + 1 : e.r);
+    if (meetAdv.rot !== "all" && String(rotNum) !== String(meetAdv.rot)) return false;
+
+    const m = e.m || {};
+    if (meetAdv.phase !== "all" && m.t !== meetAdv.phase) return false;
+    if (meetAdv.combo !== "all" && m.bs !== meetAdv.combo && m.ca !== meetAdv.combo) return false;
+    if (meetAdv.zone !== "all" && m.z !== meetAdv.zone && m.zs !== meetAdv.zone && m.ze !== meetAdv.zone) return false;
+
+    if (q) {
+      const hay = [
+        pn(e.p, e.o),
+        SK[e.k][0],
+        formatActionAsDvCode(e),
+        e.note || "",
+        Object.values(m).filter(Boolean).join(" ")
+      ].join(" ").toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+
     return true;
   });
 }
@@ -5812,16 +5947,98 @@ function renderMeetingList(clips) {
   }).join("");
 }
 
+function renderMeetingFilters(t0, t1) {
+  const grid = $("meet-flt-grid");
+  if (!grid) return;
+
+  const synced = (S.log || []).filter((e) => e.p && SK[e.k] && sT(e) !== "");
+  const sets = [...new Set(synced.map((e) => String(e.s)))].sort((a, b) => +a - +b);
+  const combos = [...new Set(synced.flatMap((e) => [e.m && e.m.bs, e.m && e.m.ca]).filter(Boolean))].sort();
+  const zones = [...new Set(synced.flatMap((e) => [e.m && e.m.z, e.m && e.m.zs, e.m && e.m.ze]).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, "it", { numeric: true }));
+
+  const roster = meetAdv.team === "1"
+    ? (S.op || [])
+    : meetAdv.team === "0"
+      ? (S.pl || [])
+      : [...(S.pl || []).map((p) => ({ ...p, _o: 0 })), ...(S.op || []).map((p) => ({ ...p, _o: 1 }))];
+
+  const opt = (val, cur, lbl) => `<option value="${esc(val)}"${String(cur) === String(val) ? " selected" : ""}>${esc(lbl)}</option>`;
+
+  grid.innerHTML = `
+    <select class="meet-sel" data-c="meet_set" data-f="team">
+      ${opt("all", meetAdv.team, "Squadra: Tutte")}
+      ${opt("0", meetAdv.team, "Noi (" + t0 + ")")}
+      ${opt("1", meetAdv.team, "Avv (" + t1 + ")")}
+    </select>
+    <select class="meet-sel" data-c="meet_set" data-f="set">
+      ${opt("all", meetAdv.set, "Set: Tutti")}
+      ${sets.map((s) => opt(s, meetAdv.set, "Set " + s)).join("")}
+    </select>
+    <select class="meet-sel" data-c="meet_set" data-f="skill">
+      ${opt("all", meetAdv.skill, "Gesto: Tutti")}
+      ${Object.keys(SK).map((k) => opt(k, meetAdv.skill, SK[k][0])).join("")}
+    </select>
+    <select class="meet-sel" data-c="meet_set" data-f="grade">
+      ${opt("all", meetAdv.grade, "Esito: Tutti")}
+      ${opt("#", meetAdv.grade, "# Punto / Perfetta")}
+      ${opt("+", meetAdv.grade, "+ Positiva")}
+      ${opt("!", meetAdv.grade, "! Discreta / Neutra")}
+      ${opt("-", meetAdv.grade, "- Scarsa / Subìta")}
+      ${opt("/", meetAdv.grade, "/ Murato")}
+      ${opt("=", meetAdv.grade, "= Errore")}
+    </select>
+    <select class="meet-sel" data-c="meet_set" data-f="player">
+      ${opt("all", meetAdv.player, "Giocatrice: Tutte")}
+      ${roster.map((p) => opt(p.n, meetAdv.player, `#${p.n} ${p.name || ""}${meetAdv.team === "all" && p._o ? " (Avv)" : ""}`)).join("")}
+    </select>
+    <select class="meet-sel" data-c="meet_set" data-f="rot">
+      ${opt("all", meetAdv.rot, "Rotazione: Tutte")}
+      ${[1, 2, 3, 4, 5, 6].map((r) => opt(String(r), meetAdv.rot, "Rotazione P" + r)).join("")}
+    </select>
+    <select class="meet-sel" data-c="meet_set" data-f="phase">
+      ${opt("all", meetAdv.phase, "Fase: Tutte")}
+      ${opt("K1", meetAdv.phase, "K1 (Cambio Palla)")}
+      ${opt("K2", meetAdv.phase, "K2 (Contrattacco)")}
+      ${opt("Free", meetAdv.phase, "Free Ball")}
+    </select>
+    <select class="meet-sel" data-c="meet_set" data-f="combo">
+      ${opt("all", meetAdv.combo, "Colpo / Alzata: Tutti")}
+      ${combos.map((c) => opt(c, meetAdv.combo, c)).join("")}
+    </select>
+    <select class="meet-sel" data-c="meet_set" data-f="zone" style="grid-column:1 / -1">
+      ${opt("all", meetAdv.zone, "Zona campo (partenza o arrivo): Tutte")}
+      ${zones.map((z) => opt(z, meetAdv.zone, "Zona " + z)).join("")}
+    </select>
+    <input id="meet-search-in" class="meet-search" value="${esc(meetAdv.search)}" placeholder="🔍 Cerca nelle note tattiche o codice DV (es. parallela, muro, *08A#)...">
+  `;
+}
+
 function renderMeeting() {
   const ov = $("meeting-overlay");
   if (!ov) return;
   if (!meetOpen) { ov.style.display = "none"; return; }
   ov.style.display = "flex";
-  ["all", "star", "err", "pt", "clutch"].forEach((f) => { const b = $("mf-" + f); if (b) b.classList.toggle("on", f === meetFilter); });
+  ["all", "star", "err", "pt", "clutch"].forEach((f) => {
+    const b = $("mf-" + f);
+    if (b) b.classList.toggle("on", f === meetFilter);
+  });
+
   const mi = IX.find((x) => x.id == MID) || {};
+  const t0 = mi.t || "Noi", t1 = mi.a || "Avversari";
   const titleEl = $("meet-title"), subEl = $("meet-sub");
   if (titleEl) titleEl.textContent = mi.name || "Sessione Videoanalisi";
   if (subEl) subEl.textContent = `Pre-roll ${S.preRoll ?? 4}s · Post-roll ${S.postRoll ?? 3}s · Lavagna Tattica Attiva`;
+
+  renderMeetingFilters(t0, t1);
+
+  const activeCount = Object.entries(meetAdv).filter(([k, v]) => k === "search" ? v.trim() !== "" : v !== "all").length;
+  const resetBtn = $("meet-reset-btn");
+  if (resetBtn) {
+    resetBtn.textContent = activeCount ? `↺ Reset (${activeCount})` : "↺ Reset";
+    resetBtn.classList.toggle("on", activeCount > 0);
+  }
+
   const clips = getMeetingClips();
   renderMeetingList(clips);
   if (clips.length) playMeetingClip(Math.min(meetIdx, clips.length - 1));
