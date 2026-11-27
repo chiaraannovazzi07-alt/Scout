@@ -806,6 +806,7 @@ let seasonOpen = false, seasonPhase = "all", seasonQual = "all", seasonPlayer = 
 let pkPlayer = "";
 let vdt = "all", sce = false, agv = false, agx = {}, mdo = true, kbo = false, TM = [], hf = null, tdc = null, trid = null, rfw = true, rhold = null, tmsg = "", fmc = false, bkm = "", selA = null, rtm = 0, rks = "all", rpl = "all", rStarOnly = false, rAutoPlay = false, qaOpen = false, meetOpen = false, meetFilter = "all", meetIdx = 0, meetDrawing = false, meetTool = "free", meetColor = "#facc15";
 let rcb = "all", revSel = {}, tabPreview = false;
+let rgd = "all"; // Filtro esito in Video & Revisione ("all", "#", "+", "!", "-", "/", "=", "ERR")
 
 // Stato Mappa Tattica Interattiva & Rally Sync
 let tmapOpen = false, tmapSkill = "A", tmapPlayer = "all", tmapRot = "all", tmapPhase = "all", tmapCombo = "all";
@@ -2343,7 +2344,7 @@ const H = {
     } else el.focus();
     keepCodeFocus = false;
   },
-  export_dvw: (v) => { downloadDvw(v); },
+  export_dvw: (v) => { openExportModal(v); },
   to_cancel: () => { clearInterval(toTimerId); $("to-overlay").style.display = "none"; },
   open_sanc: () => { $("sanc-overlay").style.display = "flex"; },
   close_sanc: () => { $("sanc-overlay").style.display = "none"; },
@@ -2622,10 +2623,9 @@ const H = {
   rsk: (v) => {
     selA = +v;
     const e = S.log[selA];
-    if (!e) return;
-    if (e.p && SK[e.k] && !getFilteredRevIndices().includes(selA)) {
-      rtm = e.o ? 1 : 0; sf = "all"; rks = "all"; rpl = "all"; rcb = "all"; rStarOnly = false;
-    }
+  if (e.p && SK[e.k] && !getFilteredRevIndices().includes(selA)) {
+    rtm = e.o ? 1 : 0; sf = "all"; rks = "all"; rgd = "all"; rpl = "all"; rcb = "all"; rStarOnly = false;
+  }
     if (tab !== "rev") tab = "rev";
     const t = sT(e), d = $("vd");
     rhold = null;
@@ -2723,6 +2723,10 @@ const H = {
     meetOpen = true;
     meetFilter = "all";
     meetAdv = defaultMeetAdv();
+    if (rgd !== "all") {
+      if (rgd === "ERR") meetFilter = "err";
+      else meetAdv.grade = rgd;
+    }
     meetIdx = 0;
     meetDrawing = false;
     renderMeeting();
@@ -2784,7 +2788,15 @@ const H = {
   insx: () => { selA = ins; ins = null; tab = "rev"; render(); },
   rfw: () => { rfw = !rfw; render(); },
   rtm: (v) => { rtm = +v; rpl = "all"; rcb = "all"; render(); },
-  rks: (v) => { rks = v; rcb = "all"; render(); },
+  rks: (v) => {
+    rks = v;
+    rcb = "all";
+    if (rgd !== "all" && rgd !== "ERR" && v !== "all" && SK[v] && !SK[v][1].some((g) => g[0] === rgd)) {
+      rgd = "all";
+    }
+    render();
+  },
+  rgd: (v) => { rgd = v; render(); },
   rpl: (v) => { rpl = v; render(); },
   trn: (v) => { trid = v; render(); },
   trok: () => { renT(trid, $("trn2").value.trim()); trid = null; render(); },
@@ -3229,6 +3241,10 @@ function getFilteredRevIndices() {
     if (sf != "all" && e.s != sf) return;
     if (!e.o != !rtm) return;
     if (rks != "all" && e.k != rks) return;
+    if (rgd != "all") {
+      if (rgd == "ERR") {
+        if (!(e.g == "=" || (e.k == "A" && e.g == "/"))) return;
+    } else if (e.g != rgd) return;}
     if (rpl != "all" && e.p != rpl) return;
     if (rcb != "all" && (!e.m || e.m.bs != rcb)) return;
     if (rStarOnly && !e.star) return;
@@ -6088,6 +6104,15 @@ function vRev() {
 
   h += `<div class="row">${bt("sfl", "all", "Tutti i set", sf == "all" ? "on sm" : "sm")}${sets.map((s) => bt("sfl", "" + s, "Set " + s, sf == s ? "on sm" : "sm")).join("")}</div>`;
   h += `<div class="row">${bt("rtm", "0", t0, rtm ? "sm" : "on sm")}${bt("rtm", "1", t1, rtm ? "on sm" : "sm")}${bt("rks", "all", "Tutti i gesti", rks == "all" ? "on sm" : "sm")}${Object.keys(SK).map((k) => bt("rks", k, SK[k][0], rks == k ? "on sm" : "sm")).join("")}</div>`;
+  const revGrades = rks != "all" && SK[rks]
+  ? SK[rks][1]
+  : [["#", "Punto/Perf"], ["+", "Positiva"], ["!", "Discreta"], ["-", "Scarsa"], ["/", "Murato"], ["=", "Errore"]];
+
+  h += `<div class="row">
+    ${bt("rgd", "all", "Tutti gli esiti", rgd == "all" ? "on sm" : "sm")}
+    ${revGrades.map(([g, lab]) => bt("rgd", g, `${esc(g)} ${esc(lab)}`, rgd == g ? "on sm" : "sm")).join("")}
+    ${bt("rgd", "ERR", "❌ Errori (=/ )", rgd == "ERR" ? "on sm" : "sm")}
+  </div>`;
   if (comboOptions.length) {
     h += `<div class="row">${bt("rcb", "all", "Tutte combinazioni", rcb == "all" ? "on sm" : "sm")}${comboOptions.map((cb) => bt("rcb", cb, cb, rcb == cb ? "on sm" : "sm")).join("")}</div>`;
   }
@@ -6755,88 +6780,398 @@ function seekTo(v, t) {
   });
 }
 async function clipsExp(list) {
-  if (!list || !list.length) { alert("Nessuna azione con tempo video disponibile per l'esportazione."); return; }
-  const srcVd = $("vd");
-  if (!srcVd || !srcVd.src) {
-    alert("Collega o carica prima il video della partita dal Player Video per esportare le clip reali.");
+  if (clipExporting) {
+    clipExporting = false;
+    xs("Esportazione MP4 annullata", 2000);
     return;
   }
-  if (clipExporting) return;
-  clipExporting = true;
+
+  const mainVd = $("vd");
+  if (!mainVd || !mainVd.src) {
+    xs("Carica o collega prima il video della partita", 2600);
+    return;
+  }
 
   const pre = S.preRoll !== undefined ? S.preRoll : 4;
   const post = S.postRoll !== undefined ? S.postRoll : 3;
-  const mi = IX.find((x) => x.id == MID) || {};
 
-  const workVd = document.createElement("video");
-  workVd.src = srcVd.src;
-  workVd.muted = false;
-  workVd.playsInline = true;
-  workVd.crossOrigin = "anonymous";
+  // Estrae i metadati leggibili di ogni azione per la sovrimpressione
+  const buildOverlayInfo = (e) => {
+    const skName = SK[e.k] ? SK[e.k][0] : e.k || "Azione";
+    const grObj = SK[e.k] && SK[e.k][1] ? SK[e.k][1].find((g) => g[0] === e.g) : null;
+    const grLabel = grObj ? grObj[1] : "";
 
-  await new Promise((res) => {
-    if (workVd.readyState >= 1) res();
-    else workVd.onloadedmetadata = () => res();
-  });
+    const topParts = [];
+    if (e.s) topParts.push(`SET ${e.s}`);
+    const score = e.sc || e.score || (e.pts !== undefined ? e.pts : "");
+    if (score !== "") topParts.push(String(score));
+    const rot = e.r || e.rot;
+    if (rot) topParts.push(`P${rot}`);
+    topParts.push(e.o ? "AVVERSARI" : "NOI");
 
-  const canvas = document.createElement("canvas");
-  canvas.width = workVd.videoWidth || 1280;
-  canvas.height = workVd.videoHeight || 720;
-  const ctx = canvas.getContext("2d");
+    const pNum = e.p !== undefined && e.p !== "" ? `#${e.p}` : "";
+    const pName = e.pn || e.name || "";
+    const playerStr = [pNum, pName].filter(Boolean).join(" ");
+    const mainTitle = playerStr ? `${playerStr} · ${skName}` : skName;
+    const subTitle = grLabel ? `${skName} — ${grLabel}` : skName;
 
-  const stream = canvas.captureStream(30);
-  const mime = MediaRecorder.isTypeSupported("video/webm;codecs=vp9") ? "video/webm;codecs=vp9" : "video/webm";
-  const recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 3500000 });
-  const chunks = [];
-  recorder.ondataavailable = (ev) => { if (ev.data && ev.data.size > 0) chunks.push(ev.data); };
+    return {
+      topLine: topParts.join("  ·  "),
+      mainLine: mainTitle,
+      grade: e.g || "",
+      gradeDesc: grLabel,
+      isOpp: !!e.o,
+      skill: e.k || "",
+    };
+  };
 
-  recorder.start(200);
-  let aborted = false;
-try{
-  for (let i = 0; i < list.length; i++) {
-    if (aborted) break;
-    const act = list[i];
-    const off = getSetOffset(act.s);
-    const centerT = +sT(act) + off;
-    const startT = Math.max(0, centerT - pre);
-    const endT = Math.min(workVd.duration || centerT + post, centerT + post);
-
-    xs(`🎬 Esportazione clip ${i + 1}/${list.length}: ${pn(act.p, act.o)} (${SK[act.k][0]})...`, 15000);
-    await seekTo(workVd, startT);
-    await workVd.play().catch(() => {});
-
-    await new Promise((r) => {
-      const drawLoop = () => {
-        if (workVd.currentTime >= endT || workVd.ended) {
-          workVd.pause();
-          r();
-          return;
-        }
-        ctx.drawImage(workVd, 0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = "rgba(15, 23, 42, 0.78)";
-        ctx.fillRect(16, canvas.height - 54, canvas.width - 32, 38);
-        ctx.fillStyle = "#fbbf24";
-        ctx.font = "bold 18px sans-serif";
-        ctx.fillText(`Set ${act.s} (${act.b ? act.b.us + "-" + act.b.th : ""}) · ${pn(act.p, act.o)} · ${SK[act.k][0]} (${act.g})`, 28, canvas.height - 29);
-        requestAnimationFrame(drawLoop);
+  const rawSegments = (list || [])
+    .map((e) => {
+      const rel = sT(e);
+      if (rel === "") return null;
+      const center = +rel + getSetOffset(e.s);
+      return {
+        start: Math.max(0, center - pre),
+        end: center + post,
+        center,
+        info: buildOverlayInfo(e),
       };
-      requestAnimationFrame(drawLoop);
-    });
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.start - b.start);
+
+  if (!rawSegments.length) {
+    xs("Nessuna clip con timestamp video da esportare", 2400);
+    return;
   }
 
-  recorder.stop();
-  await new Promise((r) => { recorder.onstop = () => r(); });
+  // Unisce clip sovrapposte mantenendo la sequenza delle sovrimpressioni internas
+  const segments = [];
+  rawSegments.forEach((seg) => {
+    const prev = segments[segments.length - 1];
+    if (prev && seg.start <= prev.end + 0.3) {
+      prev.end = Math.max(prev.end, seg.end);
+      prev.events.push({ start: seg.start, center: seg.center, info: seg.info });
+    } else {
+      segments.push({
+        start: seg.start,
+        end: seg.end,
+        events: [{ start: seg.start, center: seg.center, info: seg.info }],
+      });
+    }
+  });
 
-  const finalBlob = new Blob(chunks, { type: mime });
-  const url = URL.createObjectURL(finalBlob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${(mi.name || "Clip_Partita").replace(/[^a-z0-9_-]/gi, "_")}_Highlights.webm`;
-  a.click();
-}finally{
-  clipExporting = false;
-}
-  xs(`✅ Video highlights esportato (${list.length} clip)!`, 3500);
+  // Seleziona l'evento attivo al timestamp corrente (utile se un rally ha più clip unite)
+  const getActiveInfo = (seg, t) => {
+    if (seg.events.length === 1) return seg.events[0].info;
+    let chosen = seg.events[0];
+    for (let i = 1; i < seg.events.length; i++) {
+      const switchPoint = (seg.events[i - 1].center + seg.events[i].center) / 2;
+      if (t >= switchPoint) chosen = seg.events[i];
+    }
+    return chosen.info;
+  };
+
+  // Disegna la sovrimpressione in basso a sinistra sul canvas
+  const drawOverlay = (ctx, w, h, info) => {
+    if (!info) return;
+    const scale = Math.max(0.65, w / 1280);
+    const padX = Math.round(28 * scale);
+    const padY = Math.round(26 * scale);
+    const boxH = Math.round(74 * scale);
+    const boxW = Math.min(w - padX * 2, Math.round(540 * scale));
+    const x = padX;
+    const y = h - padY - boxH;
+    const r = Math.round(10 * scale);
+
+    // Colore accento in base all'esito
+    let accent = "#6366f1";
+    if (info.grade === "#") accent = "#10b981";
+    else if (info.grade === "+") accent = "#38bdf8";
+    else if (info.grade === "!") accent = "#f59e0b";
+    else if (info.grade === "-") accent = "#f97316";
+    else if (info.grade === "=" || info.grade === "/") accent = "#ef4444";
+
+    ctx.save();
+
+    // Sfondo scuro semitrasparente con bordo arrotondato
+    ctx.beginPath();
+    if (ctx.roundRect) {
+      ctx.roundRect(x, y, boxW, boxH, r);
+    } else {
+      ctx.rect(x, y, boxW, boxH);
+    }
+    ctx.fillStyle = "rgba(15, 23, 42, 0.84)";
+    ctx.fill();
+    ctx.lineWidth = Math.max(1, Math.round(1.5 * scale));
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.14)";
+    ctx.stroke();
+
+    // Barra laterale colorata (esito)
+    ctx.beginPath();
+    const barW = Math.round(7 * scale);
+    if (ctx.roundRect) {
+      ctx.roundRect(x, y, barW, boxH, [r, 0, 0, r]);
+    } else {
+      ctx.rect(x, y, barW, boxH);
+    }
+    ctx.fillStyle = accent;
+    ctx.fill();
+
+    // Badge esito sulla destra del box
+    const badgeSize = Math.round(44 * scale);
+    const badgeX = x + boxW - badgeSize - Math.round(14 * scale);
+    const badgeY = y + Math.round((boxH - badgeSize) / 2);
+    if (info.grade) {
+      ctx.beginPath();
+      if (ctx.roundRect) {
+        ctx.roundRect(badgeX, badgeY, badgeSize, badgeSize, Math.round(8 * scale));
+      } else {
+        ctx.rect(badgeX, badgeY, badgeSize, badgeSize);
+      }
+      ctx.fillStyle = accent;
+      ctx.fill();
+
+      ctx.fillStyle = "#ffffff";
+      ctx.font = `800 ${Math.round(23 * scale)}px system-ui, -apple-system, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(info.grade, badgeX + badgeSize / 2, badgeY + badgeSize / 2 + 1);
+    }
+
+    // Testi (riga superiore: Set/Punteggio/Squadra; riga inferiore: Giocatore · Fondamentale)
+    const textX = x + barW + Math.round(14 * scale);
+    const maxTextW = badgeX - textX - Math.round(10 * scale);
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+
+    ctx.fillStyle = "#94a3b8";
+    ctx.font = `700 ${Math.round(13 * scale)}px system-ui, -apple-system, sans-serif`;
+    ctx.fillText(info.topLine, textX, y + Math.round(26 * scale), maxTextW);
+
+    ctx.fillStyle = "#f8fafc";
+    ctx.font = `700 ${Math.round(21 * scale)}px system-ui, -apple-system, sans-serif`;
+    const mainLabel = info.gradeDesc ? `${info.mainLine} (${info.gradeDesc})` : info.mainLine;
+    ctx.fillText(mainLabel, textX, y + Math.round(55 * scale), maxTextW);
+
+    ctx.restore();
+  };
+
+  const mp4Candidates = [
+    'video/mp4;codecs="avc1.42E01E,mp4a.40.2"',
+    'video/mp4;codecs="avc1.4D401E,mp4a.40.2"',
+    "video/mp4;codecs=avc1,mp4a.40.2",
+    "video/mp4;codecs=avc1",
+    "video/mp4",
+  ];
+  const nativeMp4Mime =
+    window.MediaRecorder && mp4Candidates.find((t) => MediaRecorder.isTypeSupported(t));
+
+  const mi = IX.find((x) => x.id == MID) || {};
+  const baseName = (mi.name || "DataScout_Clips").replace(/[^a-z0-9_-]+/gi, "_");
+  const skPart = rks !== "all" && SK[rks] ? "_" + SK[rks][0] : "";
+  const gdPart = rgd !== "all" ? "_" + (rgd === "ERR" ? "Errori" : rgd) : "";
+  const fileName = `${baseName}${skPart}${gdPart}.mp4`;
+
+  clipExporting = true;
+  xs(`🎬 Preparazione MP4 con grafica (${segments.length} clip)... Clicca di nuovo per annullare`, 60000);
+
+  const expVd = document.createElement("video");
+  expVd.src = mainVd.src;
+  expVd.playsInline = true;
+  expVd.preload = "auto";
+
+  try {
+    await new Promise((resolve, reject) => {
+      expVd.onloadedmetadata = resolve;
+      expVd.onerror = () => reject(new Error("Impossibile leggere il sorgente video"));
+    });
+
+    const w = expVd.videoWidth || 1280;
+    const h = expVd.videoHeight || 720;
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+
+    if (nativeMp4Mime) {
+      // Percorso nativo MP4 con Canvas + Audio (Chrome, Edge, Safari, Opera)
+      let stream;
+      let audioCtx = null;
+      const canvasStream = canvas.captureStream(30);
+
+      try {
+        expVd.muted = false;
+        expVd.volume = 1;
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const srcNode = audioCtx.createMediaElementSource(expVd);
+        const destNode = audioCtx.createMediaStreamDestination();
+        srcNode.connect(destNode);
+        stream = new MediaStream([
+          ...canvasStream.getVideoTracks(),
+          ...destNode.stream.getAudioTracks(),
+        ]);
+      } catch (e) {
+        expVd.muted = true;
+        stream = canvasStream;
+      }
+
+      const chunks = [];
+      const recorder = new MediaRecorder(stream, {
+        mimeType: nativeMp4Mime,
+        videoBitsPerSecond: 6_000_000,
+      });
+      recorder.ondataavailable = (ev) => {
+        if (ev.data && ev.data.size > 0) chunks.push(ev.data);
+      };
+
+      const stopped = new Promise((res) => {
+        recorder.onstop = res;
+      });
+
+      recorder.start(250);
+      recorder.pause();
+
+      for (let i = 0; i < segments.length; i++) {
+        if (!clipExporting) break;
+        const seg = segments[i];
+        xs(`🎬 Esportazione MP4: clip ${i + 1} di ${segments.length}...`, 60000);
+
+        expVd.currentTime = Math.min(seg.start, Math.max(0, (expVd.duration || seg.end) - 0.1));
+        await new Promise((res) => {
+          expVd.onseeked = res;
+        });
+
+        // Disegna subito il primo frame con sovrimpressione prima di riprendere la registrazione
+        ctx.drawImage(expVd, 0, 0, w, h);
+        drawOverlay(ctx, w, h, getActiveInfo(seg, expVd.currentTime));
+
+        await expVd.play();
+        if (recorder.state === "paused") recorder.resume();
+
+        await new Promise((res) => {
+          const check = () => {
+            if (!clipExporting || expVd.ended || expVd.currentTime >= seg.end) {
+              expVd.pause();
+              if (recorder.state === "recording") recorder.pause();
+              res();
+            } else {
+              ctx.drawImage(expVd, 0, 0, w, h);
+              drawOverlay(ctx, w, h, getActiveInfo(seg, expVd.currentTime));
+              requestAnimationFrame(check);
+            }
+          };
+          requestAnimationFrame(check);
+        });
+      }
+
+      if (recorder.state !== "inactive") recorder.stop();
+      await stopped;
+      if (audioCtx) audioCtx.close().catch(() => {});
+
+      if (clipExporting && chunks.length) {
+        const blob = new Blob(chunks, { type: "video/mp4" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = fileName;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+        xs(`✅ Video MP4 salvato: ${fileName}`, 3500);
+      }
+    } else if (window.VideoEncoder) {
+      // Fallback Firefox tramite WebCodecs + mp4-muxer
+      if (!window.Mp4Muxer) {
+        await new Promise((res, rej) => {
+          const sc = document.createElement("script");
+          sc.src = "https://cdn.jsdelivr.net/npm/mp4-muxer@5.1.3/build/mp4-muxer.min.js";
+          sc.onload = res;
+          sc.onerror = () => rej(new Error("Impossibile caricare il muxer MP4"));
+          document.head.appendChild(sc);
+        });
+      }
+
+      const muxer = new Mp4Muxer.Muxer({
+        target: new Mp4Muxer.ArrayBufferTarget(),
+        video: { codec: "avc", width: w, height: h },
+        fastStart: "in-memory",
+      });
+
+      const encoder = new VideoEncoder({
+        output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+        error: (err) => console.error(err),
+      });
+      encoder.configure({
+        codec: "avc1.42001f",
+        width: w,
+        height: h,
+        bitrate: 6_000_000,
+        framerate: 30,
+      });
+
+      expVd.muted = true;
+      let frameTs = 0;
+      const stepUs = Math.round(1_000_000 / 30);
+
+      for (let i = 0; i < segments.length; i++) {
+        if (!clipExporting) break;
+        const seg = segments[i];
+        xs(`🎬 Codifica MP4: clip ${i + 1} di ${segments.length}...`, 60000);
+
+        expVd.currentTime = seg.start;
+        await new Promise((res) => {
+          expVd.onseeked = res;
+        });
+        await expVd.play();
+
+        await new Promise((res) => {
+          let lastDraw = 0;
+          const tick = (now) => {
+            if (!clipExporting || expVd.ended || expVd.currentTime >= seg.end) {
+              expVd.pause();
+              res();
+              return;
+            }
+            if (now - lastDraw >= 32) {
+              lastDraw = now;
+              ctx.drawImage(expVd, 0, 0, w, h);
+              drawOverlay(ctx, w, h, getActiveInfo(seg, expVd.currentTime));
+              const frame = new VideoFrame(canvas, { timestamp: frameTs });
+              encoder.encode(frame, { keyFrame: frameTs % (stepUs * 60) === 0 });
+              frame.close();
+              frameTs += stepUs;
+            }
+            requestAnimationFrame(tick);
+          };
+          requestAnimationFrame(tick);
+        });
+      }
+
+      await encoder.flush();
+      muxer.finalize();
+
+      if (clipExporting) {
+        const blob = new Blob([muxer.target.buffer], { type: "video/mp4" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = fileName;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+        xs(`✅ Video MP4 salvato: ${fileName}`, 3500);
+      }
+    } else {
+      xs("⚠️ Il browser attuale non supporta l'esportazione MP4 diretta. Usa Chrome, Edge o Safari.", 4000);
+    }
+  } catch (err) {
+    console.error(err);
+    xs("⚠️ Errore durante l'esportazione MP4: " + (err.message || err), 4000);
+  } finally {
+    clipExporting = false;
+    expVd.pause();
+    expVd.removeAttribute("src");
+    expVd.load();
+  }
 }
 
 // ==================== RENDER PRINCIPALE E TASTIERA GLOBALE ====================
@@ -6963,4 +7298,152 @@ render();
 })();
 
 </script>
+
+<!-- Modale Scelta Esportazione -->
+<div id="exportChoiceModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:9999; align-items:center; justify-content:center; font-family:sans-serif;">
+  <div style="background:#1e293b; color:#f8fafc; border:1px solid #334155; border-radius:12px; padding:24px; width:90%; max-width:420px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.5);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <h3 style="margin:0; font-size:18px;">Esporta Partita</h3>
+      <button onclick="closeExportModal()" style="background:none; border:none; color:#94a3b8; font-size:20px; cursor:pointer;">&times;</button>
+    </div>
+
+    <p id="exportVideoStatus" style="font-size:13px; color:#94a3b8; margin:0 0 16px 0;"></p>
+
+    <div style="display:flex; flex-direction:column; gap:10px;">
+      <button id="btnExportBoth" onclick="runExport('both')" style="padding:12px 16px; border-radius:8px; border:none; background:#2563eb; color:#fff; font-weight:600; cursor:pointer; text-align:left;">
+        📦 Scarica entrambi (.dvw + Video)
+        <div style="font-size:11px; font-weight:400; opacity:0.85; margin-top:2px;">Ideale per condividere la partita completa e sincronizzata</div>
+      </button>
+
+      <button onclick="runExport('dvw')" style="padding:12px 16px; border-radius:8px; border:1px solid #475569; background:#0f172a; color:#f8fafc; font-weight:600; cursor:pointer; text-align:left;">
+        📄 Solo file scout (.dvw)
+        <div style="font-size:11px; font-weight:400; color:#94a3b8; margin-top:2px;">File leggero con squadre, rotazioni e timestamp</div>
+      </button>
+
+      <button id="btnExportVideo" onclick="runExport('video')" style="padding:12px 16px; border-radius:8px; border:1px solid #475569; background:#0f172a; color:#f8fafc; font-weight:600; cursor:pointer; text-align:left;">
+        🎬 Solo file video (.mp4)
+        <div style="font-size:11px; font-weight:400; color:#94a3b8; margin-top:2px;">Rinominato automaticamente come il file .dvw</div>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentExportParam = null;
+
+// 1. Apre il modale salvando il parametro (v)
+async function openExportModal(v) {
+  currentExportParam = v;
+  const modal = document.getElementById('exportChoiceModal');
+  const statusEl = document.getElementById('exportVideoStatus');
+  const btnBoth = document.getElementById('btnExportBoth');
+  const btnVideo = document.getElementById('btnExportVideo');
+
+  const videoSource = await resolveMatchVideoFile();
+  const hasVideo = Boolean(videoSource);
+
+  if (hasVideo) {
+    statusEl.innerHTML = '✅ <strong>Video collegato trovato:</strong> pronto per l’esportazione.';
+    btnBoth.disabled = false;
+    btnVideo.disabled = false;
+    btnBoth.style.opacity = '1';
+    btnVideo.style.opacity = '1';
+  } else {
+    statusEl.innerHTML = '⚠️ <strong>Nessun video collegato:</strong> puoi esportare solo il file .dvw.';
+    btnBoth.disabled = true;
+    btnVideo.disabled = true;
+    btnBoth.style.opacity = '0.45';
+    btnVideo.style.opacity = '0.45';
+  }
+
+  modal.style.display = 'flex';
+}
+
+function closeExportModal() {
+  document.getElementById('exportChoiceModal').style.display = 'none';
+}
+
+// 2. Esegue il download usando la tua funzione originale downloadDvw(v)
+async function runExport(mode) {
+  closeExportModal();
+
+  if (mode === 'dvw' || mode === 'both') {
+    downloadDvw(currentExportParam);
+  }
+
+  if (mode === 'video' || mode === 'both') {
+    const videoFileOrUrl = await resolveMatchVideoFile();
+    if (!videoFileOrUrl) {
+      alert('Nessun file video associato a questa partita.');
+      return;
+    }
+
+    const baseName = `Partita_${window.S?.id || 'Export'}`;
+    const delay = mode === 'both' ? 400 : 0;
+
+    setTimeout(() => {
+      if (typeof videoFileOrUrl === 'string') {
+        triggerDownloadFromUrl(videoFileOrUrl, `${baseName}.mp4`);
+      } else {
+        const ext = videoFileOrUrl.name?.split('.').pop() || 'mp4';
+        triggerDownload(videoFileOrUrl, `${baseName}.${ext}`);
+      }
+    }, delay);
+  }
+}
+
+// 3. Recupera il video da tutte le possibili fonti dell'app
+async function resolveMatchVideoFile() {
+  const player = document.querySelector('video');
+  if (player && player.src && player.src.startsWith('blob:')) {
+    try {
+      const res = await fetch(player.src);
+      return await res.blob();
+    } catch (e) {}
+  }
+
+  if (window.S?.id && typeof getSavedHandle === 'function') {
+    try {
+      const handle = await getSavedHandle(`h_${S.id}`);
+      if (handle) return await handle.getFile();
+    } catch (e) {}
+  }
+
+  if (window.S?.id && typeof getSavedVideoBlob === 'function') {
+    try {
+      const blob = await getSavedVideoBlob(`video_${S.id}`);
+      if (blob) return blob;
+    } catch (e) {}
+  }
+
+  if (window.S?.vurl) {
+    return S.vurl;
+  }
+
+  return null;
+}
+
+function triggerDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+function triggerDownloadFromUrl(url, filename) {
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.target = '_blank';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+</script>
+
+
 </body></html>
