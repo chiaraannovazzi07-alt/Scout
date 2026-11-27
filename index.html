@@ -14,7 +14,6 @@
     pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
   }
 </script>
-
 <style>
 :root {
   box-sizing: border-box;
@@ -507,6 +506,24 @@ textarea { min-height: 160px; }
   #pr table { break-inside: avoid; }
   #pr .tw { overflow: visible; border: 0; }
 }
+
+/* ==================== ANALISI AVANZATA DATA VOLLEY ==================== */
+.adv-bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:space-between;background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:10px;margin-bottom:10px}
+.adv-presets{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px}
+.adv-flt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(165px,1fr));gap:8px;padding:10px;background:rgba(255,255,255,.03);border:1px solid var(--bd);border-radius:8px;margin-bottom:10px}
+.adv-fld{display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--mu)}
+.adv-fld b{color:var(--tx);font-size:11px}
+.adv-fld select,.adv-fld input{padding:5px 7px;border-radius:6px;font-size:12px;background:var(--bg);color:var(--tx);border:1px solid var(--bd)}
+.adv-grades{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+.adv-pivot-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 10px;background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.35);border-radius:8px;margin-bottom:10px;font-size:12px}
+.adv-pivot-bar select{padding:5px 8px;border-radius:6px;font-size:12px;font-weight:700;background:var(--bg);color:var(--tx);border:1px solid var(--bd)}
+.adv-l1{background:rgba(255,255,255,.04);font-weight:700;cursor:pointer}
+.adv-l1:hover{background:rgba(59,130,246,.12)}
+.adv-l2 td:first-child{padding-left:24px;color:var(--mu);font-weight:500}
+.adv-l2{font-size:12px;background:rgba(0,0,0,.08)}
+.adv-eff-pos{color:#22c55e;font-weight:700}
+.adv-eff-neg{color:#ef4444;font-weight:700}
+.adv-dist-bar{display:inline-block;height:6px;background:var(--ac);border-radius:3px;margin-right:5px;vertical-align:middle}
 </style></head><body>
 
 <!-- MEETING / VIDEOANALYSIS PRESENTATION OVERLAY -->
@@ -689,6 +706,7 @@ textarea { min-height: 160px; }
 <div id="xp" style="display:none;position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:99;background:var(--card);border:1px solid var(--ac);border-radius:10px;padding:8px 12px;box-shadow:0 6px 24px rgba(0,0,0,.35)"><span id="xt"></span> <button class="sm" data-a="xc">Annulla</button></div>
 <div id="pr"></div>
 
+
 <script>
 // ==================== ARCHIVIO DI PARTENZA ====================
 const DEMO_IDX = [{"id": "m_live_1", "name": "Milano Volley Pro - Conegliano Star", "date": "2026-11-20", "t": "Milano Volley Pro", "a": "Conegliano Star", "place": "Allianz Cloud Milano", "cat": "Serie A1", "sc": "25-22 23-25 (18-16)", "n": 3, "w": "1-1", "f": 0}];
@@ -756,6 +774,72 @@ let rcb = "all", revSel = {}, tabPreview = false;
 // Stato Mappa Tattica Interattiva & Rally Sync
 let tmapOpen = false, tmapSkill = "A", tmapPlayer = "all", tmapRot = "all", tmapPhase = "all", tmapCombo = "all";
 let rallyStartVt = null, clipExporting = false;
+// ==================== STATO ANALISI AVANZATA DATA VOLLEY ====================
+let statView = "classic"; // "classic" | "adv"
+let advFiltersOpen = true;
+let advSavedViews = [];
+try { advSavedViews = JSON.parse(localStorage.getItem("scoutAdvViews") || "[]"); } catch (e) {}
+const saveAdvViews = () => { try { localStorage.setItem("scoutAdvViews", JSON.stringify(advSavedViews)); } catch (e) {} stampNow(); dirSched(); };
+
+let meetCustomClips = null; // Playlist temporanea lanciata dall'Analisi Avanzata
+
+const ADV_DIMS = [
+  ["player", "Giocatrice"],
+  ["role", "Ruolo (P/S/O/C/L)"],
+  ["combo", "Combinazione / Alzata"],
+  ["rot", "Rotazione (P1–P6)"],
+  ["phase", "Fase (K1 / K2 / Free)"],
+  ["prevQual", "Qualità Azione Precedente"],
+  ["zStart", "Zona Partenza"],
+  ["zEnd", "Zona Arrivo / Direzione"],
+  ["shot", "Tipo Colpo"],
+  ["ballQual", "Qualità Palla"],
+  ["blockers", "Numero Muratori"],
+  ["srvType", "Tipo Battuta"],
+  ["scoreBand", "Fascia Punteggio"],
+  ["set", "Set"],
+  ["match", "Partita"],
+];
+
+const DV_ADV_PRESETS = [
+  { id: "dv_att_combo", label: "⚔️ Attacco: Giocatrice × Combinazione", cfg: { team: 0, skill: "A", grades: [], phase: "all", prevQual: "all", scoreBand: "all", group1: "player", group2: "combo" } },
+  { id: "dv_setter_k1", label: "🧠 Distribuzione K1 (Ric #/+)", cfg: { team: 0, skill: "A", grades: [], phase: "K1", prevQual: "pos", scoreBand: "all", group1: "rot", group2: "combo" } },
+  { id: "dv_setter_oos", label: "⚠️ Palla Staccata / Out-of-System", cfg: { team: 0, skill: "A", grades: [], phase: "all", prevQual: "neg", scoreBand: "all", group1: "player", group2: "shot" } },
+  { id: "dv_rot_eff", label: "🔄 Rotazioni P1–P6 × Zona", cfg: { team: 0, skill: "A", grades: [], phase: "all", prevQual: "all", scoreBand: "all", group1: "rot", group2: "zStart" } },
+  { id: "dv_block_shot", label: "🧱 Attacco vs Muro & Colpi", cfg: { team: 0, skill: "A", grades: [], phase: "all", prevQual: "all", scoreBand: "all", group1: "blockers", group2: "shot" } },
+  { id: "dv_clutch", label: "🔥 Money Time (20+ pt)", cfg: { team: 0, skill: "A", grades: [], phase: "all", prevQual: "all", scoreBand: "clutch", group1: "player", group2: "phase" } },
+  { id: "dv_rec_srv", label: "🛡️ Ricezione vs Battuta", cfg: { team: 0, skill: "R", grades: [], phase: "all", prevQual: "all", scoreBand: "all", group1: "player", group2: "srvType" } },
+  { id: "dv_opp_scout", label: "🎯 Scouting Avversario (Zone)", cfg: { team: 1, skill: "A", grades: [], phase: "all", prevQual: "all", scoreBand: "all", group1: "player", group2: "zEnd" } },
+];
+
+function defaultAdvCfg() {
+  return {
+    scope: "cur",      // "cur" | "roster" | "all"
+    team: 0,           // 0 = Noi, 1 = Avversari
+    skill: "A",        // "A" | "R" | "B" | "D" | "S" | "M" | "*"
+    grades: [],        // [] = tutti, es. ["#", "+"]
+    set: "all",
+    rot: "all",        // "all" | "1".."6" | "front" | "back"
+    phase: "all",      // "all" | "K1" | "K2" | "Free"
+    scoreBand: "all",  // "all" | "early" | "mid" | "clutch" | "close" | "behind" | "ahead"
+    role: "all",       // "all" | "P" | "S" | "O" | "C" | "L"
+    player: "all",
+    combo: "all",
+    zStart: "all",
+    zEnd: "all",
+    shot: "all",
+    ballQual: "all",
+    blockers: "all",
+    srvType: "all",
+    prevQual: "all",   // "all" | "pos" | "neg" | "rec" | "dig"
+    starOnly: false,
+    group1: "player",
+    group2: "combo",
+    collapsed: {},     // { [k1]: true }
+  };
+}
+let advCfg = defaultAdvCfg();
+let activeAdvPreset = "dv_att_combo";
 
 let S = { pl: [], lu: [], log: [], sets: [], set: 1, us: 0, th: 0, srv: false, rot: 0, preRoll: 4, postRoll: 3, setOffsets: {} };
 let lineupSet = 1, lineupSelPos = null, lineupTeam = 0, toTimerId = null, toSeconds = 30, keepCodeFocus = false, extWin = null, showNewMatchBox = false;
@@ -1987,6 +2071,99 @@ function rec(g) {
   mod = {}; tj = []; nxt(e, ended); save(); render();
 }
 const H = {
+  stat_view: (v) => { statView = v; render(); },
+  adv_tog_flt: () => { advFiltersOpen = !advFiltersOpen; render(); },
+  adv_reset: () => { advCfg = defaultAdvCfg(); activeAdvPreset = ""; render(); },
+  adv_preset: (id) => {
+    const pr = DV_ADV_PRESETS.find((x) => x.id === id);
+    if (!pr) return;
+    advCfg = Object.assign(defaultAdvCfg(), pr.cfg);
+    activeAdvPreset = id;
+    render();
+  },
+  adv_g1: (v) => { advCfg.group1 = v; advCfg.collapsed = {}; render(); },
+  adv_g2: (v) => { advCfg.group2 = v; advCfg.collapsed = {}; render(); },
+  adv_swap_g: () => {
+    if (advCfg.group2 === "none") return;
+    const tmp = advCfg.group1;
+    advCfg.group1 = advCfg.group2;
+    advCfg.group2 = tmp;
+    advCfg.collapsed = {};
+    render();
+  },
+  adv_exp_all: () => {
+    if (Object.keys(advCfg.collapsed).length) {
+      advCfg.collapsed = {};
+    } else {
+      const { filtered } = getAdvFilteredEvents();
+      buildAdvTree(filtered).forEach((n) => { advCfg.collapsed[n.key] = true; });
+    }
+    render();
+  },
+  adv_tog_row: (k) => {
+    if (advCfg.collapsed[k]) delete advCfg.collapsed[k];
+    else advCfg.collapsed[k] = true;
+    render();
+  },
+  adv_team: (v) => { advCfg.team = +v; advCfg.player = "all"; render(); },
+  adv_skill: (v) => { advCfg.skill = v; advCfg.grades = []; render(); },
+  adv_grade: (g) => {
+    const i = advCfg.grades.indexOf(g);
+    if (i >= 0) advCfg.grades.splice(i, 1);
+    else advCfg.grades.push(g);
+    render();
+  },
+  adv_grade_clr: () => { advCfg.grades = []; render(); },
+  adv_csv: () => { downloadAdvCsv(); },
+  adv_save_view: () => {
+    const name = prompt("Nome della vista personalizzata (es. Pipe K1 Orro):", "Vista " + (advSavedViews.length + 1));
+    if (!name || !name.trim()) return;
+    advSavedViews.push({ name: name.trim(), cfg: JSON.parse(JSON.stringify(advCfg)) });
+    saveAdvViews();
+    activeAdvPreset = "custom_" + (advSavedViews.length - 1);
+    render();
+    xs("💾 Vista salvata!", 1800);
+  },
+  adv_load_view: (idx) => {
+    const sv = advSavedViews[+idx];
+    if (!sv) return;
+    advCfg = Object.assign(defaultAdvCfg(), JSON.parse(JSON.stringify(sv.cfg)));
+    activeAdvPreset = "custom_" + idx;
+    render();
+  },
+  adv_del_view: (idx) => {
+    advSavedViews.splice(+idx, 1);
+    saveAdvViews();
+    render();
+  },
+  adv_play_all: () => {
+    const { filtered } = getAdvFilteredEvents();
+    const idxs = filtered.filter((e) => e.isCurrent && e.hasVideo).map((e) => e.logIdx);
+    if (idxs.length) H.adv_play(idxs.join(","));
+  },
+  adv_play: (payload) => {
+    const idxs = String(payload).split(",").map((x) => +x).filter((n) => !isNaN(n) && S.log[n]);
+    if (!idxs.length) return;
+    const d = $("vd");
+    if (d && d.src) {
+      d.pause();
+      meetCustomClips = idxs;
+      meetOpen = true;
+      meetFilter = "all";
+      meetIdx = 0;
+      meetDrawing = false;
+      renderMeeting();
+    } else {
+      selA = idxs[0];
+      tab = "rev";
+      render();
+      xs(`Carica il video per riprodurre tutte le ${idxs.length} clip selezionate`, 2800);
+    }
+  },
+
+  
+  toggle_rosters_mgr: () => { rostersMgrOpen = !rostersMgrOpen; render(); },
+  toggle_roster_analysis: () => { rosterAnalysisOpen = !rosterAnalysisOpen; render(); },
   tm_select: (id) => { selRosterId = String(id); render(); },
   tm_create: () => {
     const inp = $("new-roster-name");
@@ -2492,8 +2669,8 @@ const H = {
     d.pause();
     meetOpen = true; meetFilter = "all"; meetIdx = 0; meetDrawing = false; renderMeeting();
   },
-  meet_close: () => { meetOpen = false; const mv = $("meet-vd"); if (mv) mv.pause(); $("meeting-overlay").style.display = "none"; },
-  meet_flt: (v) => { meetFilter = v; meetIdx = 0; renderMeeting(); },
+  meet_close: () => { meetCustomClips = null; meetOpen = false; const mv = $("meet-vd"); if (mv) mv.pause(); $("meeting-overlay").style.display = "none"; },
+  meet_flt: (v) => { meetCustomClips = null; meetFilter = v; meetIdx = 0; renderMeeting(); },
   meet_pick: (v) => { meetIdx = +v; playMeetingClip(meetIdx); },
   meet_prev: () => { if (meetIdx > 0) { meetIdx--; playMeetingClip(meetIdx); } },
   meet_next: () => { const list = getMeetingClips(); if (meetIdx < list.length - 1) { meetIdx++; playMeetingClip(meetIdx); } },
@@ -2870,7 +3047,11 @@ document.addEventListener("click", (e) => {
     if (!keepCodeFocus && document.activeElement !== $("dv-code-in")) b.blur();
   }
 });
-document.addEventListener("change", (e) => { const c = e.target.dataset.c; if (c) H[c](e.target.value); });
+document.addEventListener("change", (e) => {
+  const c = e.target.dataset.c;
+  if (c === "adv_set") { advCfg[e.target.dataset.f] = e.target.value; render(); return; }
+  if (c) H[c](e.target.value);
+});
 
 // ==================== MEMORIA PERSISTENTE PER I VIDEO & AUTO-PLAYLIST ====================
 async function requestPersistentStorage() {
@@ -4605,6 +4786,9 @@ function getEffectivePlayers(m, st) {
 }
 
 // Pannello UI per creare, modificare e collegare "Le Mie Rose"
+let rostersMgrOpen = false;
+
+// Pannello UI per creare, modificare e collegare "Le Mie Rose"
 function buildRostersManagerHtml() {
   if (!Array.isArray(TM)) TM = [];
   if (!selRosterId && TM.length) selRosterId = String(TM[0].id);
@@ -4614,15 +4798,23 @@ function buildRostersManagerHtml() {
   const autoMatched = curMatch ? getMatchedRoster(curMatch, S) : null;
 
   return `<div class="card" style="border:2px solid #f59e0b;margin-bottom:12px">
-    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+    <div data-a="toggle_rosters_mgr" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;cursor:pointer;${rostersMgrOpen ? "margin-bottom:10px" : ""}">
       <div>
-        <b style="font-size:15px">👥 Gestione Rose &amp; Collegamento Partite</b>
-        <div class="sm2">Crea le tue rose una volta sola: vengono abbinate in automatico per nome squadra o giocatrici</div>
+        <b style="font-size:15px">${rostersMgrOpen ? "▾" : "▸"} 👥 Gestione Rose &amp; Collegamento Partite</b>
+        <div class="sm2">
+          Rose salvate: <b>${TM.length}</b>
+          ${curMatch ? ` · Abbinata a questa gara: ${autoMatched ? `<span style="color:#22c55e"><b>${esc(autoMatched.name)}</b></span>` : `<span style="color:#f59e0b">Nessuna</span>`}` : ""}
+        </div>
       </div>
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-        <input id="new-roster-name" placeholder="Nome nuova rosa (es. Under 18)" style="padding:5px 8px;border-radius:6px;font-size:12px">
-        ${bt("tm_create", "", "+ Crea Rosa", "sm on")}
+        ${bt("toggle_rosters_mgr", "", rostersMgrOpen ? "▲ Chiudi" : "▼ Apri", "sm" + (rostersMgrOpen ? " on" : ""))}
       </div>
+    </div>
+
+    ${rostersMgrOpen ? `
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+      <input id="new-roster-name" placeholder="Nome nuova rosa (es. Under 18)" style="flex:1;min-width:190px;padding:5px 8px;border-radius:6px;font-size:12px">
+      ${bt("tm_create", "", "+ Crea Rosa", "sm on")}
     </div>
 
     ${TM.length ? `
@@ -4673,6 +4865,7 @@ function buildRostersManagerHtml() {
       <b>Partita aperta:</b> ${esc(curMatch.name)} · 
       <b>Rosa abbinata:</b> ${autoMatched ? `<span style="color:#22c55e"><b>${esc(autoMatched.name)}</b> (${curMatch.rosterId ? "collegata manualmente" : "rilevata in automatico"})</span>` : `<span style="color:#f59e0b">Nessuna rosa abbinata (usa il pulsante "Collega & Carica" qui sopra)</span>`}
     </div>` : ""}
+    ` : ""}
   </div>`;
 }
 let activeRosterReportId = "";
@@ -4733,12 +4926,18 @@ function getMatchesForRoster(roster) {
     .sort((a, b) => (a.m.date || "").localeCompare(b.m.date || ""));
 }
 
+let rosterAnalysisOpen = false;
+
+// Andamento generale della rosa + andamento giocatrici
 // Andamento generale della rosa + andamento giocatrici
 function buildRosterAnalysisHtml() {
   if (!Array.isArray(TM) || !TM.length) {
     return `<div class="card" style="margin-bottom:12px">
-      <b>🏐 Andamento Rose &amp; Giocatrici</b>
-      <div class="sm2">Vai su una partita → Squadra → <b>Salva Rosa</b> per creare la tua prima rosa e vedere l'andamento generale e delle giocatrici.</div>
+      <div data-a="toggle_roster_analysis" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer">
+        <b>${rosterAnalysisOpen ? "▾" : "▸"} 🏐 Andamento Rose &amp; Giocatrici</b>
+        ${bt("toggle_roster_analysis", "", rosterAnalysisOpen ? "▲ Chiudi" : "▼ Apri", "sm" + (rosterAnalysisOpen ? " on" : ""))}
+      </div>
+      ${rosterAnalysisOpen ? `<div class="sm2" style="margin-top:6px">Vai su <b>Squadre</b> → <b>Gestione Rose</b> o premi <b>Salva Rosa</b> per creare la tua prima rosa e vedere l'andamento generale e delle giocatrici.</div>` : ""}
     </div>`;
   }
 
@@ -4853,15 +5052,21 @@ function buildRosterAnalysisHtml() {
   }
 
   return `<div class="card" style="border:2px solid #f59e0b;margin-bottom:12px">
-    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+    <div data-a="toggle_roster_analysis" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;cursor:pointer;${rosterAnalysisOpen ? "margin-bottom:10px" : ""}">
       <div>
-        <b style="font-size:15px">🏐 Andamento Rosa: ${esc(roster.name)}</b>
+        <b style="font-size:15px">${rosterAnalysisOpen ? "▾" : "▸"} 🏐 Andamento Rosa: ${esc(roster.name)}</b>
         <div class="sm2">Partite abbinate: <b>${pairedMatches.length}</b> · Vinte/Perse: <b>${gWon}V - ${gLost}P</b> · Set: <b>${sWon} - ${sLost}</b></div>
       </div>
-      <div style="display:flex;gap:4px;flex-wrap:wrap">
-        ${TM.map((r) => bt("roster_rep_sel", String(r.id), esc(r.name), "sm" + (String(r.id) === String(roster.id) ? " on" : ""))).join("")}
-        ${bt("save_roster_now", "0", "+ Salva Rosa da Partita", "sm")}
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        ${bt("toggle_roster_analysis", "", rosterAnalysisOpen ? "▲ Chiudi" : "▼ Apri", "sm" + (rosterAnalysisOpen ? " on" : ""))}
       </div>
+    </div>
+
+    ${rosterAnalysisOpen ? `
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+      <span class="sm2"><b>Rosa selezionata:</b></span>
+      ${TM.map((r) => bt("roster_rep_sel", String(r.id), esc(r.name), "sm" + (String(r.id) === String(roster.id) ? " on" : ""))).join("")}
+      ${bt("save_roster_now", "0", "+ Salva Rosa da Partita", "sm")}
     </div>
 
     <div class="sm2" style="margin-bottom:6px"><b>1 · Andamento Generale della Rosa (${pairedMatches.length} gare)</b></div>
@@ -4890,8 +5095,540 @@ function buildRosterAnalysisHtml() {
       </table>
     </div>
     ${detailHtml}
+    ` : ""}
   </div>`;
 }
+
+// ==================== MOTORE ANALISI AVANZATA DATA VOLLEY ====================
+function getAdvScopeMatches() {
+  if (advCfg.scope === "cur") {
+    const m = IX.find((x) => x.id == MID) || { id: MID, name: "Partita Corrente", date: "" };
+    return [{ m, st: S, isCurrent: true }];
+  }
+  if (advCfg.scope === "roster") {
+    const curMatch = IX.find((x) => x.id == MID);
+    const roster = curMatch ? getMatchedRoster(curMatch, S) : (TM[0] || null);
+    if (roster) {
+      return getMatchesForRoster(roster).map((x) => ({
+        m: x.m,
+        st: x.m.id == MID ? S : x.st,
+        isCurrent: x.m.id == MID,
+      }));
+    }
+  }
+  return IX.map((m) => {
+    let st = null;
+    try { st = m.id == MID ? S : JSON.parse(localStorage.getItem("scoutM_" + m.id)); } catch (e) {}
+    return st ? { m, st, isCurrent: m.id == MID } : null;
+  }).filter(Boolean);
+}
+
+function enrichMatchLogForAdv(m, st, isCurrent) {
+  const out = [];
+  let curPhase = "K1";
+  let lastPassQual = "none";
+  let lastPassSkill = "";
+
+  const plMap = {};
+  (st.pl || []).forEach((p) => { plMap[String(p.n)] = p; });
+  const opMap = {};
+  (st.op || []).forEach((p) => { opMap[String(p.n)] = p; });
+
+  (st.log || []).forEach((e, idx) => {
+    if (!e) return;
+    if (e.k === "P" || e.k === "F") {
+      curPhase = "K1";
+      lastPassQual = "none";
+      lastPassSkill = "";
+      return;
+    }
+    if (e.k === "B") {
+      curPhase = e.o ? "K1" : "K2";
+      lastPassQual = "none";
+      lastPassSkill = "";
+    }
+
+    const evPhase = (e.m && e.m.t && ["K1", "K2", "Free"].includes(e.m.t)) ? e.m.t : curPhase;
+    const isOpp = !!e.o;
+    const rotNum = isOpp
+      ? (e.b && e.b.orot !== undefined ? (e.b.orot % 6) + 1 : (e.r || 1))
+      : (e.b && e.b.rot !== undefined ? (e.b.rot % 6) + 1 : (e.r || 1));
+
+    const us = e.b && e.b.us !== undefined ? +e.b.us : 0;
+    const th = e.b && e.b.th !== undefined ? +e.b.th : 0;
+    const myPts = isOpp ? th : us;
+    const oppPts = isOpp ? us : th;
+    const diff = myPts - oppPts;
+
+    let scoreBand = "mid";
+    if (us >= 20 || th >= 20) scoreBand = "clutch";
+    else if (us <= 8 && th <= 8) scoreBand = "early";
+
+    const pObj = (isOpp ? opMap : plMap)[String(e.p)] || { n: e.p, name: "", r: "" };
+    const pName = pObj.name ? pObj.name.trim() : "";
+    const pLabel = advCfg.scope === "cur"
+      ? (e.p == "?" ? "Avv. non ident." : `#${e.p}${pName ? " " + pName : ""}`)
+      : (pName ? `${pName} (#${e.p})` : `#${e.p}`);
+
+    if (SK[e.k]) {
+      out.push({
+        raw: e,
+        matchId: m.id,
+        matchName: m.name || "Partita",
+        matchDate: m.date || "",
+        isCurrent,
+        logIdx: idx,
+        o: isOpp ? 1 : 0,
+        s: e.s,
+        k: e.k,
+        g: e.g,
+        p: String(e.p || ""),
+        playerLabel: pLabel,
+        role: pObj.r || "–",
+        rot: rotNum,
+        phase: evPhase,
+        combo: (e.m && e.m.bs) || "–",
+        zStart: (e.m && (e.m.z || e.m.zs)) || "–",
+        zEnd: (e.m && (e.m.ze || e.m.st)) || "–",
+        shot: (e.m && e.m.ca) || "–",
+        ballQual: (e.m && e.m.qa) || "–",
+        blockers: (e.m && (e.m.mu || e.m.n)) || "–",
+        srvType: (e.m && (e.m.t || e.m.bt)) || "–",
+        prevQual: lastPassQual,     // "pos" | "neg" | "none"
+        prevSkill: lastPassSkill,   // "R" | "D" | ""
+        scoreBand,
+        diff,
+        star: !!e.star,
+        hasVideo: sT(e) !== "",
+      });
+    }
+
+    if (e.k === "R") {
+      curPhase = isOpp ? "K2" : "K1";
+      lastPassQual = "#+".includes(e.g) ? "pos" : "neg";
+      lastPassSkill = "R";
+    } else if (e.k === "D") {
+      curPhase = "K2";
+      lastPassQual = "#+".includes(e.g) ? "pos" : "neg";
+      lastPassSkill = "D";
+    }
+  });
+
+  return out;
+}
+
+function getAdvFilteredEvents() {
+  const matches = getAdvScopeMatches();
+  let all = [];
+  matches.forEach(({ m, st, isCurrent }) => {
+    all = all.concat(enrichMatchLogForAdv(m, st, isCurrent));
+  });
+
+  const teamPool = all.filter((x) => x.o === advCfg.team);
+
+  const filtered = teamPool.filter((x) => {
+    if (advCfg.skill !== "*" && x.k !== advCfg.skill) return false;
+    if (advCfg.grades.length && !advCfg.grades.includes(x.g)) return false;
+    if (advCfg.set !== "all" && String(x.s) !== String(advCfg.set)) return false;
+    if (advCfg.rot !== "all") {
+      if (advCfg.rot === "front" && ![2, 3, 4].includes(x.rot)) return false;
+      else if (advCfg.rot === "back" && ![1, 6, 5].includes(x.rot)) return false;
+      else if (!["front", "back"].includes(advCfg.rot) && String(x.rot) !== String(advCfg.rot)) return false;
+    }
+    if (advCfg.phase !== "all" && x.phase !== advCfg.phase) return false;
+    if (advCfg.scoreBand !== "all") {
+      if (advCfg.scoreBand === "close" && Math.abs(x.diff) > 2) return false;
+      else if (advCfg.scoreBand === "behind" && x.diff > -3) return false;
+      else if (advCfg.scoreBand === "ahead" && x.diff < 3) return false;
+      else if (["early", "mid", "clutch"].includes(advCfg.scoreBand) && x.scoreBand !== advCfg.scoreBand) return false;
+    }
+    if (advCfg.role !== "all" && x.role !== advCfg.role) return false;
+    if (advCfg.player !== "all" && x.playerLabel !== advCfg.player && x.p !== advCfg.player) return false;
+    if (advCfg.combo !== "all" && x.combo !== advCfg.combo) return false;
+    if (advCfg.zStart !== "all" && x.zStart !== advCfg.zStart) return false;
+    if (advCfg.zEnd !== "all" && x.zEnd !== advCfg.zEnd) return false;
+    if (advCfg.shot !== "all" && x.shot !== advCfg.shot) return false;
+    if (advCfg.ballQual !== "all" && x.ballQual !== advCfg.ballQual) return false;
+    if (advCfg.blockers !== "all" && x.blockers !== advCfg.blockers) return false;
+    if (advCfg.srvType !== "all" && x.srvType !== advCfg.srvType) return false;
+    if (advCfg.prevQual !== "all") {
+      if (advCfg.prevQual === "pos" && x.prevQual !== "pos") return false;
+      if (advCfg.prevQual === "neg" && x.prevQual !== "neg") return false;
+      if (advCfg.prevQual === "rec" && x.prevSkill !== "R") return false;
+      if (advCfg.prevQual === "dig" && x.prevSkill !== "D") return false;
+    }
+    if (advCfg.starOnly && !x.star) return false;
+    return true;
+  });
+
+  return { filtered, teamPool, matchCount: matches.length };
+}
+
+function getAdvDimValue(ev, dim) {
+  switch (dim) {
+    case "player": return ev.playerLabel || "–";
+    case "role": return ev.role || "–";
+    case "combo": return ev.combo || "–";
+    case "rot": return "P" + ev.rot;
+    case "phase": return ev.phase || "–";
+    case "prevQual":
+      if (ev.prevQual === "pos") return `Post-${ev.prevSkill === "D" ? "Dif" : "Ric"} Positiva (#/+)`;
+      if (ev.prevQual === "neg") return `Post-${ev.prevSkill === "D" ? "Dif" : "Ric"} Negativa (!/-)`;
+      return "Inizio / Altra azione";
+    case "zStart": return ev.zStart === "–" ? "–" : "Zona " + ev.zStart;
+    case "zEnd": return ev.zEnd === "–" ? "–" : "Zona " + ev.zEnd;
+    case "shot": return ev.shot || "–";
+    case "ballQual": return ev.ballQual || "–";
+    case "blockers": return ev.blockers || "–";
+    case "srvType": return ev.srvType || "–";
+    case "scoreBand":
+      if (ev.scoreBand === "clutch") return "Money Time (20+)";
+      if (ev.scoreBand === "early") return "Inizio Set (0–8)";
+      return "Fase Centrale (9–19)";
+    case "set": return "Set " + ev.s;
+    case "match": return `${ev.matchDate ? ev.matchDate + " · " : ""}${ev.matchName}`;
+    default: return "–";
+  }
+}
+
+function computeDvMetrics(events, grandTotal) {
+  const tot = events.length;
+  const distPct = grandTotal ? Math.round((100 * tot) / grandTotal) : 0;
+  const pt = events.filter((e) => e.g === "#").length;
+  const pos = events.filter((e) => e.g === "#" || e.g === "+").length;
+  const neu = events.filter((e) => e.g === "!").length;
+  const err = events.filter((e) => e.g === "=").length;
+  const blk = events.filter((e) => e.g === "/" || (e.k === "M" && e.g === "-")).length;
+
+  // Efficienza Data Volley: (Pt - Err - Mur) / Tot per Attacco/Muro; (Perf - Err) / Tot per gli altri
+  const bad = (advCfg.skill === "A" || advCfg.skill === "M" || advCfg.skill === "*") ? (err + blk) : err;
+  const effNum = tot ? Math.round((100 * (pt - bad)) / tot) : null;
+  const effStr = effNum === null ? "–" : (effNum > 0 ? "+" + effNum + "%" : effNum + "%");
+  const vidItems = events.filter((e) => e.isCurrent && e.hasVideo);
+
+  return {
+    tot,
+    distPct,
+    pt,
+    pos,
+    neu,
+    err,
+    blk,
+    ptPct: pc(pt, tot),
+    posPct: pc(pos, tot),
+    effNum,
+    effStr,
+    vidCount: vidItems.length,
+    vidIndices: vidItems.map((e) => e.logIdx),
+  };
+}
+
+function buildAdvTree(events) {
+  const grandTotal = events.length;
+  const g1Map = {};
+  events.forEach((ev) => {
+    const k1 = getAdvDimValue(ev, advCfg.group1);
+    (g1Map[k1] = g1Map[k1] || []).push(ev);
+  });
+
+  const keys1 = Object.keys(g1Map).sort((a, b) => {
+    if (advCfg.group1 === "rot" || advCfg.group1 === "set") return a.localeCompare(b, "it", { numeric: true });
+    return g1Map[b].length - g1Map[a].length; // Ordine decrescente per volume (standard Data Volley)
+  });
+
+  return keys1.map((k1) => {
+    const evs1 = g1Map[k1];
+    const m1 = computeDvMetrics(evs1, grandTotal);
+    let children = [];
+    if (advCfg.group2 && advCfg.group2 !== "none" && advCfg.group2 !== advCfg.group1) {
+      const g2Map = {};
+      evs1.forEach((ev) => {
+        const k2 = getAdvDimValue(ev, advCfg.group2);
+        (g2Map[k2] = g2Map[k2] || []).push(ev);
+      });
+      const keys2 = Object.keys(g2Map).sort((a, b) => g2Map[b].length - g2Map[a].length);
+      children = keys2.map((k2) => ({
+        key: k2,
+        metrics: computeDvMetrics(g2Map[k2], grandTotal),
+      }));
+    }
+    return { key: k1, metrics: m1, children };
+  });
+}
+
+function downloadAdvCsv() {
+  const { filtered } = getAdvFilteredEvents();
+  const tree = buildAdvTree(filtered);
+  const totM = computeDvMetrics(filtered, filtered.length);
+  const sep = ";";
+  const header = ["Livello 1", "Livello 2", "Tot", "% Dist", "Pt (#)", "Pos (#+)", "Neu (!)", "Mur (/)", "Err (=)", "Pt%", "Pos%", "Eff%"].join(sep);
+  const rows = [header];
+
+  const pushRow = (l1, l2, m) => {
+    rows.push([
+      `"${String(l1).replace(/"/g, '""')}"`,
+      `"${String(l2).replace(/"/g, '""')}"`,
+      m.tot, m.distPct + "%", m.pt, m.pos, m.neu, m.blk, m.err, m.ptPct, m.posPct, m.effStr
+    ].join(sep));
+  };
+
+  tree.forEach((n1) => {
+    pushRow(n1.key, n1.children.length ? "TOTALE GRUPPO" : "–", n1.metrics);
+    n1.children.forEach((n2) => pushRow(n1.key, n2.key, n2.metrics));
+  });
+  pushRow("TOTALE SELEZIONE", "–", totM);
+
+  const blob = new Blob(["\uFEFF" + rows.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `DataScout_AnalisiAvanzata_${advCfg.skill}_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+}
+
+function vAdvAnalysis(t0, t1) {
+  const { filtered, teamPool, matchCount } = getAdvFilteredEvents();
+  const tree = buildAdvTree(filtered);
+  const totM = computeDvMetrics(filtered, filtered.length);
+  const skGrades = advCfg.skill !== "*" && SK[advCfg.skill] ? SK[advCfg.skill][1] : [["#", "Punto"], ["+", "Positiva"], ["!", "Discreta"], ["-", "Scarsa"], ["/", "Murato"], ["=", "Errore"]];
+
+  // Opzioni dinamiche ricavate dai dati reali del pool
+  const uniq = (fn) => [...new Set(teamPool.map(fn).filter((v) => v && v !== "–"))].sort((a, b) => a.localeCompare(b, "it", { numeric: true }));
+  const setsOpt = uniq((x) => String(x.s));
+  const playersOpt = uniq((x) => x.playerLabel);
+  const combosOpt = uniq((x) => x.combo);
+  const zStartOpt = uniq((x) => x.zStart);
+  const zEndOpt = uniq((x) => x.zEnd);
+  const shotsOpt = uniq((x) => x.shot);
+  const ballQualOpt = uniq((x) => x.ballQual);
+  const blockersOpt = uniq((x) => x.blockers);
+  const srvTypeOpt = uniq((x) => x.srvType);
+
+  const selHtml = (field, val, opts, allLabel = "Tutti") =>
+    `<select data-c="adv_set" data-f="${field}">
+      <option value="all"${val === "all" ? " selected" : ""}>${esc(allLabel)}</option>
+      ${opts.map(([v, l]) => `<option value="${esc(v)}"${String(val) === String(v) ? " selected" : ""}>${esc(l)}</option>`).join("")}
+    </select>`;
+
+  // Conta filtri attivi
+  let activeFltCount = 0;
+  ["set", "rot", "phase", "scoreBand", "role", "player", "combo", "zStart", "zEnd", "shot", "ballQual", "blockers", "srvType", "prevQual"].forEach((k) => {
+    if (advCfg[k] !== "all") activeFltCount++;
+  });
+  if (advCfg.grades.length) activeFltCount++;
+  if (advCfg.starOnly) activeFltCount++;
+
+  let h = `<div class="card" style="border:2px solid var(--ac);margin-bottom:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+      <div>
+        <b style="font-size:15px">🔬 Analisi Avanzata Multi-Filtro &amp; Pivot (Data Volley)</b>
+        <div class="sm2">${matchCount} ${matchCount === 1 ? "partita" : "partite"} · <b>${filtered.length}</b> azioni filtrate su ${teamPool.length}</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        ${bt("adv_tog_flt", "", advFiltersOpen ? `🔼 Nascondi Filtri (${activeFltCount})` : `🔽 Mostra Filtri (${activeFltCount})`, "sm" + (activeFltCount ? " on" : ""))}
+        ${bt("adv_reset", "", "↺ Reset", "sm")}
+        ${bt("adv_save_view", "", "💾 Salva Vista", "sm")}
+        ${bt("adv_csv", "", "📊 Esporta CSV", "sm")}
+        ${totM.vidCount ? bt("adv_play_all", "", `▶ Tutte le Clip (${totM.vidCount})`, "sm on") : ""}
+      </div>
+    </div>
+
+    <!-- PRESET STANDARD DATA VOLLEY + VISTE SALVATE -->
+    <div class="adv-presets">
+      <span class="sm2" style="align-self:center;margin-right:2px"><b>Preset DV:</b></span>
+      ${DV_ADV_PRESETS.map((pr) => bt("adv_preset", pr.id, pr.label, "sm" + (activeAdvPreset === pr.id ? " on" : ""))).join("")}
+    </div>
+    ${advSavedViews.length ? `<div class="adv-presets" style="border-top:1px dashed var(--bd);padding-top:6px">
+      <span class="sm2" style="align-self:center;margin-right:2px"><b>Le mie viste:</b></span>
+      ${advSavedViews.map((sv, idx) => `<span style="display:inline-flex;gap:2px;align-items:center">
+        ${bt("adv_load_view", "" + idx, "📌 " + sv.name, "sm" + (activeAdvPreset === "custom_" + idx ? " on" : ""))}
+        ${bt("adv_del_view", "" + idx, "✕", "sm")}
+      </span>`).join("")}
+    </div>` : ""}
+
+    <!-- BARRA RAGGRUPPAMENTO A 2 LIVELLI (PIVOT) -->
+    <div class="adv-pivot-bar">
+      <span><b>1° Raggruppamento (Righe):</b></span>
+      <select data-c="adv_g1">
+        ${ADV_DIMS.map(([v, l]) => `<option value="${v}"${advCfg.group1 === v ? " selected" : ""}>${esc(l)}</option>`).join("")}
+      </select>
+      <span><b>2° Raggruppamento (Dettaglio):</b></span>
+      <select data-c="adv_g2">
+        <option value="none"${advCfg.group2 === "none" ? " selected" : ""}>— Nessuno (1 livello) —</option>
+        ${ADV_DIMS.map(([v, l]) => `<option value="${v}"${advCfg.group2 === v ? " selected" : ""}>${esc(l)}</option>`).join("")}
+      </select>
+      ${bt("adv_swap_g", "", "⇄ Inverti", "sm")}
+      ${advCfg.group2 !== "none" ? bt("adv_exp_all", "", Object.keys(advCfg.collapsed).length ? "⊞ Espandi Tutto" : "⊟ Comprimi Tutto", "sm") : ""}
+    </div>
+
+    <!-- PANNELLO MULTI-FILTRO COLLASSABILE -->
+    ${advFiltersOpen ? `<div class="adv-flt-grid">
+      <div class="adv-fld"><b>Ambito Dati</b>
+        ${selHtml("scope", advCfg.scope, [["cur", "Partita Corrente"], ["roster", "Tutte Partite Rosa"], ["all", "Intero Archivio"]], "Partita Corrente").replace('<option value="all">Partita Corrente</option>', '')}
+      </div>
+      <div class="adv-fld"><b>Squadra</b>
+        <select data-c="adv_team">
+          <option value="0"${advCfg.team === 0 ? " selected" : ""}>${esc(t0)} (Noi)</option>
+          <option value="1"${advCfg.team === 1 ? " selected" : ""}>${esc(t1)} (Avversari)</option>
+        </select>
+      </div>
+      <div class="adv-fld"><b>Fondamentale</b>
+        <select data-c="adv_skill">
+          <option value="*"${advCfg.skill === "*" ? " selected" : ""}>Tutti i fondamentali</option>
+          ${Object.keys(SK).map((k) => `<option value="${k}"${advCfg.skill === k ? " selected" : ""}>${esc(SK[k][0])} (${k})</option>`).join("")}
+        </select>
+      </div>
+      <div class="adv-fld"><b>Esiti (Multi-selezione)</b>
+        <div class="adv-grades">
+          ${skGrades.map(([g, lbl]) => bt("adv_grade", g, `${g}`, "sm" + (advCfg.grades.includes(g) ? " on" : ""))).join("")}
+          ${advCfg.grades.length ? bt("adv_grade_clr", "", "Tutti", "sm") : ""}
+        </div>
+      </div>
+      <div class="adv-fld"><b>Set</b>
+        ${selHtml("set", advCfg.set, setsOpt.map((s) => [s, "Set " + s]), "Tutti i set")}
+      </div>
+      <div class="adv-fld"><b>Rotazione Palleggiatore</b>
+        ${selHtml("rot", advCfg.rot, [
+          ["1", "P1"], ["2", "P2"], ["3", "P3"], ["4", "P4"], ["5", "P5"], ["6", "P6"],
+          ["front", "1ª Linea (P2-P3-P4)"], ["back", "2ª Linea (P1-P6-P5)"]
+        ], "Tutte P1–P6")}
+      </div>
+      <div class="adv-fld"><b>Fase di Gioco</b>
+        ${selHtml("phase", advCfg.phase, [["K1", "K1 (Side-Out)"], ["K2", "K2 (Break Point)"], ["Free", "Free Ball"]], "Tutte le fasi")}
+      </div>
+      <div class="adv-fld"><b>Azione Precedente (Rally)</b>
+        ${selHtml("prevQual", advCfg.prevQual, [
+          ["pos", "Dopo Ric/Dif Positiva (#/+)"],
+          ["neg", "Dopo Ric/Dif Negativa (!/-)"],
+          ["rec", "Dopo Ricezione (K1)"],
+          ["dig", "Dopo Difesa (K2)"],
+        ], "Qualsiasi")}
+      </div>
+      <div class="adv-fld"><b>Fascia Punteggio</b>
+        ${selHtml("scoreBand", advCfg.scoreBand, [
+          ["clutch", "🔥 Money Time (20+ pt)"],
+          ["early", "Inizio Set (0–8 pt)"],
+          ["mid", "Fase Centrale (9–19 pt)"],
+          ["close", "Punto a Punto (±2 pt)"],
+          ["behind", "Sotto di ≥3 pt"],
+          ["ahead", "Avanti di ≥3 pt"],
+        ], "Tutto il set")}
+      </div>
+      <div class="adv-fld"><b>Ruolo</b>
+        ${selHtml("role", advCfg.role, [["P", "Palleggiatrice (P)"], ["S", "Schiacciatrice (S)"], ["O", "Opposta (O)"], ["C", "Centrale (C)"], ["L", "Libero (L)"]], "Tutti i ruoli")}
+      </div>
+      <div class="adv-fld"><b>Giocatrice</b>
+        ${selHtml("player", advCfg.player, playersOpt.map((p) => [p, p]), "Tutte le giocatrici")}
+      </div>
+      <div class="adv-fld"><b>Combinazione / Alzata</b>
+        ${selHtml("combo", advCfg.combo, combosOpt.map((c) => [c, c]), "Tutte")}
+      </div>
+      <div class="adv-fld"><b>Zona Partenza</b>
+        ${selHtml("zStart", advCfg.zStart, zStartOpt.map((z) => [z, "Zona " + z]), "Tutte")}
+      </div>
+      <div class="adv-fld"><b>Zona Arrivo</b>
+        ${selHtml("zEnd", advCfg.zEnd, zEndOpt.map((z) => [z, "Zona " + z]), "Tutte")}
+      </div>
+      <div class="adv-fld"><b>Tipo Colpo</b>
+        ${selHtml("shot", advCfg.shot, shotsOpt.map((s) => [s, s]), "Tutti")}
+      </div>
+      <div class="adv-fld"><b>Qualità Palla</b>
+        ${selHtml("ballQual", advCfg.ballQual, ballQualOpt.map((q) => [q, q]), "Tutte")}
+      </div>
+      <div class="adv-fld"><b>Muro Affrontato</b>
+        ${selHtml("blockers", advCfg.blockers, blockersOpt.map((b) => [b, b]), "Tutti")}
+      </div>
+      <div class="adv-fld"><b>Tipo Battuta</b>
+        ${selHtml("srvType", advCfg.srvType, srvTypeOpt.map((t) => [t, t]), "Tutte")}
+      </div>
+    </div>` : ""}
+
+    <!-- TABELLA STATISTICA GERARCHICA DATA VOLLEY -->
+    <div class="tw" style="margin-bottom:0">
+      <table>
+        <thead>
+          <tr>
+            <th style="text-align:left">Gruppo / Dettaglio</th>
+            <th>Tot</th>
+            <th>% Dist</th>
+            <th>Pt (#)</th>
+            <th>Pos (#+)</th>
+            <th>Neu (!)</th>
+            <th>Mur (/)</th>
+            <th>Err (=)</th>
+            <th>Pt%</th>
+            <th>Pos%</th>
+            <th>Eff%</th>
+            <th>Video</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${tree.length ? tree.map((n1) => {
+            const m1 = n1.metrics;
+            const hasKids = n1.children.length > 0;
+            const isCol = !!advCfg.collapsed[n1.key];
+            const effCls1 = m1.effNum === null ? "" : (m1.effNum >= 25 ? "adv-eff-pos" : m1.effNum < 0 ? "adv-eff-neg" : "");
+            const vidPayload1 = m1.vidIndices.join(",");
+
+            let rowsHtml = `<tr class="adv-l1" ${hasKids ? `data-a="adv_tog_row" data-v="${esc(n1.key)}"` : ""}>
+              <td style="text-align:left">${hasKids ? (isCol ? "▶ " : "▼ ") : ""}${esc(n1.key)}</td>
+              <td><b>${m1.tot}</b></td>
+              <td style="white-space:nowrap"><span class="adv-dist-bar" style="width:${Math.max(2, Math.round(m1.distPct * 0.45))}px"></span>${m1.distPct}%</td>
+              <td><b>${m1.pt}</b></td>
+              <td>${m1.pos}</td>
+              <td>${m1.neu}</td>
+              <td>${m1.blk}</td>
+              <td>${m1.err}</td>
+              <td><b>${m1.ptPct}</b></td>
+              <td>${m1.posPct}</td>
+              <td class="${effCls1}">${m1.effStr}</td>
+              <td>${m1.vidCount ? bt("adv_play", vidPayload1, `▶ ${m1.vidCount}`, "sm") : "–"}</td>
+            </tr>`;
+
+            if (hasKids && !isCol) {
+              rowsHtml += n1.children.map((n2) => {
+                const m2 = n2.metrics;
+                const effCls2 = m2.effNum === null ? "" : (m2.effNum >= 25 ? "adv-eff-pos" : m2.effNum < 0 ? "adv-eff-neg" : "");
+                const vidPayload2 = m2.vidIndices.join(",");
+                return `<tr class="adv-l2">
+                  <td style="text-align:left">↳ ${esc(n2.key)}</td>
+                  <td>${m2.tot}</td>
+                  <td>${m2.distPct}%</td>
+                  <td><b>${m2.pt}</b></td>
+                  <td>${m2.pos}</td>
+                  <td>${m2.neu}</td>
+                  <td>${m2.blk}</td>
+                  <td>${m2.err}</td>
+                  <td><b>${m2.ptPct}</b></td>
+                  <td>${m2.posPct}</td>
+                  <td class="${effCls2}">${m2.effStr}</td>
+                  <td>${m2.vidCount ? bt("adv_play", vidPayload2, `▶ ${m2.vidCount}`, "sm") : "–"}</td>
+                </tr>`;
+              }).join("");
+            }
+            return rowsHtml;
+          }).join("") : `<tr><td colspan="12" style="padding:14px;color:var(--mu)">Nessuna azione corrisponde ai filtri selezionati.</td></tr>`}
+          ${filtered.length ? `<tr class="t">
+            <td style="text-align:left">TOTALE SELEZIONE</td>
+            <td>${totM.tot}</td>
+            <td>100%</td>
+            <td>${totM.pt}</td>
+            <td>${totM.pos}</td>
+            <td>${totM.neu}</td>
+            <td>${totM.blk}</td>
+            <td>${totM.err}</td>
+            <td>${totM.ptPct}</td>
+            <td>${totM.posPct}</td>
+            <td>${totM.effStr}</td>
+            <td>${totM.vidCount ? bt("adv_play", totM.vidIndices.join(","), `▶ ${totM.vidCount}`, "sm on") : "–"}</td>
+          </tr>` : ""}
+        </tbody>
+      </table>
+    </div>
+  </div>`;
+
+  return h;
+}
+
 function vStat() {
   const LAll = S.log.filter((e) => sf == "all" || e.s == sf);
   const L = LAll.filter((e) => !e.o == !tmS), es = ts == "*" ? L : L.filter((e) => e.k == ts);
@@ -4914,7 +5651,7 @@ function vStat() {
   return { r, won, lost, diff: won - lost, soPct: pc(soWon, soPts.length), bpPct: pc(bpWon, bpPts.length) };
   });
 
-  let h = `${buildRostersManagerHtml()}${buildRosterAnalysisHtml()}<div class="row" >
+  let h = `${buildRosterAnalysisHtml()}<div class="row" >
     ${bt("tms", "0", t0, tmS ? "" : "on")}
     ${bt("tms", "1", t1, tmS ? "on" : "")}
     ${bt("tmap_toggle", "", tmapOpen ? "✕ Chiudi Mappa Tattica" : "🎯 Mappa Tattica & Traiettorie", "sm" + (tmapOpen ? " on" : ""))}
@@ -4925,6 +5662,15 @@ function vStat() {
     ${bt("export_dvw", "", "📥 Esporta .dvw", "sm")}
     ${bt("export_csv", "", "📊 Esporta CSV", "sm")}
   </div>`;
+
+  h += `<div class="row" style="margin-bottom:10px">
+    ${bt("stat_view", "classic", "📋 Tabellino Classico", "sm" + (statView === "classic" ? " on" : ""))}
+    ${bt("stat_view", "adv", "🔬 Analisi Avanzata (Data Volley)", "sm" + (statView === "adv" ? " on" : ""))}
+  </div>`;
+
+  if (statView === "adv") {
+    return h + vAdvAnalysis(t0, t1);
+  }
 
   if (tabPreview) {
     h += `<div class="card" style="border:2px solid var(--ac);margin-bottom:12px">
@@ -5009,6 +5755,9 @@ function runDataAudit() {
 }
 
 function getMeetingClips() {
+  if (Array.isArray(meetCustomClips) && meetCustomClips.length) {
+    return meetCustomClips.map((idx) => ({ e: S.log[idx], idx })).filter((x) => x.e && sT(x.e) !== "");
+  }
   return S.log.map((e, idx) => ({ e, idx })).filter(({ e }) => {
     if (!e.p || !SK[e.k] || sT(e) === "") return false;
     if (meetFilter === "star") return !!e.star;
@@ -5268,7 +6017,7 @@ function vConfig() {
 function vTeam() {
   const m = IX.find((x) => x.id == MID) || {}, t0 = m.t || "Noi", t1 = m.a || "Avversari";
   const fmtR = (R) => R.map((p) => `${p.n} ${p.name} ${p.r}`.trim()).join("\n");
-  return `<div class="cols">
+  return `${buildRostersManagerHtml()}<div class="cols">
     <div class="card">
       <div class="lbl" style="margin-top:0">Rosa ${esc(t0)} (Numero Nome Ruolo: P/S/O/C/L)</div>
       <textarea id="ro">${esc(fmtR(S.pl))}</textarea>
@@ -5709,7 +6458,7 @@ async function dirCheck() {
 async function dirWrite() {
   if (!dirH || !(await dirCheck())) return false;
   try {
-    const data = { idx: IX, teams: TM, folders: FLD, rulesCfg: loadRulesConfig(), matches: {} };
+    const data = { idx: IX, teams: TM, folders: FLD, rulesCfg: loadRulesConfig(), advViews: advSavedViews, matches: {} };
     IX.forEach((m) => { try { data.matches[m.id] = JSON.parse(localStorage.getItem("scoutM_" + m.id)); } catch (e) {} });
     const fh = await dirH.getFileHandle("DataScout_AutoBackup.json", { create: true });
     const w = await fh.createWritable();
@@ -5725,7 +6474,7 @@ async function dirRead() {
   return JSON.parse(await file.text());
 }
 function doBackup() {
-  const data = { idx: IX, teams: TM, folders: FLD, rulesCfg: loadRulesConfig(), matches: {} };
+  const data = { idx: IX, teams: TM, folders: FLD, rulesCfg: loadRulesConfig(), advViews: advSavedViews, matches: {} };
   IX.forEach((m) => { try { data.matches[m.id] = JSON.parse(localStorage.getItem("scoutM_" + m.id)); } catch (e) {} });
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
@@ -5751,6 +6500,10 @@ function importBackup(obj) {
       if (!FLD.some((x) => x.id === f.id)) FLD.push(f);
     });
     saveFld();
+  }
+    if (obj && Array.isArray(obj.advViews)) {
+    advSavedViews = obj.advViews;
+    saveAdvViews();
   }
   return { add };
 }
