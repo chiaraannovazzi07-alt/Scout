@@ -5438,361 +5438,237 @@ function executeDvCode(raw) {
   return true;
 }
 
-function downloadDvw(targetId) {
-  const id = targetId || MID;
-  if (!id) return;
-  let st = S;
-  if (id != MID) {
-    try { st = JSON.parse(localStorage.getItem("scoutM_" + id)); } catch (e) {}
-  }
-  if (!st) { xs("Dati partita non trovati", 2000); return; }
-
-  const mi = IX.find((x) => x.id == id) || { name: "Partita", t: "CASA", a: "OSPITI" };
-  const pad2 = (n) => String(parseInt(n, 10) || 0).padStart(2, "0");
+function downloadDvw(m) {
+  if (!m) return;
   const now = new Date();
-  // Formato data americano MM/DD/YYYY come da standard DVW
-  const dateStr = `${pad2(now.getMonth() + 1)}/${pad2(now.getDate())}/${now.getFullYear()}`;
-  const timeStr = `${pad2(now.getHours())}.${pad2(now.getMinutes())}.${pad2(now.getSeconds())}`;
-  let ref = (mi.date || "").split("-").map((v) => parseInt(v, 10));
-  if (ref.length !== 3 || ref.some((v) => isNaN(v))) ref = [now.getFullYear(), now.getMonth() + 1, now.getDate()];
-  const mDate = `${pad2(ref[1])}/${pad2(ref[2])}/${ref[0]}`;
-  // Stagione sportiva (da luglio in poi = anno/anno+1)
-  const season = ref[1] >= 7 ? `${ref[0]}/${ref[0] + 1}` : `${ref[0] - 1}/${ref[0]}`;
+  const dStr = `${String(now.getDate()).padStart(2, "0")}/${String(now.getMonth() + 1).padStart(2, "0")}/${now.getFullYear()}`;
+  const tStr = `${String(now.getHours()).padStart(2, "0")}.${String(now.getMinutes()).padStart(2, "0")}.00`;
+  const lines = [];
 
-  const homeName = (mi.t || "CASA").replace(/;/g, ",").trim();
-  const visName = (mi.a || "OSPITI").replace(/;/g, ",").trim();
+  // 1. HEADER & MATCH
+  lines.push("[3DATAVOLLEYSCOUT]");
+  lines.push("FILEFORMAT: 2.0");
+  lines.push(`GENERATOR-DAY: ${dStr} ${tStr}`);
+  lines.push("GENERATOR-IDP: DVW");
+  lines.push("GENERATOR-PRG: VolleyScout");
+  lines.push("GENERATOR-REL: 1.0");
+  lines.push("GENERATOR-VER: 1.0");
+  lines.push(`LASTCHANGE-DAY: ${dStr} ${tStr}`);
+  lines.push("LASTCHANGE-IDP: DVW");
+  lines.push("LASTCHANGE-PRG: VolleyScout");
+  lines.push("LASTCHANGE-REL: 1.0");
+  lines.push("LASTCHANGE-VER: 1.0");
 
-  // Codici squadra: devono essere DIVERSI tra le due squadre (altrimenti Data Volley confonde
-  // squadre e giocatrici). Si usano le iniziali delle prime due parole del nome.
-  const mkBase = (name, fb) => {
-    const words = name.toUpperCase().split(/\s+/).map((w) => w.replace(/[^A-Z0-9]/g, "")).filter(Boolean);
-    const b = words.length >= 2 ? words[0][0] + words[1][0] : (words[0] || "").slice(0, 2);
-    return b.padEnd(2, fb);
-  };
-  let hBase = mkBase(homeName, "H");
-  let vBase = mkBase(visName, "V");
-  if (hBase === vBase) { hBase = hBase[0] + "H"; vBase = vBase[0] + "V"; }
-  const homeCode = hBase + "4";
-  const visCode = vBase + "4";
+  lines.push("[3MATCH]");
+  const mDate = m.dt ? m.dt.split("-").reverse().join("/") : dStr;
+  lines.push(`${mDate};00.00.00;2025/2026;${m.ch || "Campionato"};;Regular Season;1;${m.pl || ""};N;1;3;0;`);
+  lines.push(";;;;;;;;;;;");
 
-  // ---------- 1) SCOUT ----------
-  const skToDv = { B: "S", R: "R", S: "E", A: "A", M: "B", D: "D", X: "E" };
-  const comboMap = {
-    "Alta": "V5", "Super": "X5", "Tesa": "X5", "Mezza": "XT",
-    "5": "X5", "7": "X7", "C": "XC", "1": "X1", "2": "X2",
-    "Fast": "CF", "Quick": "X1", "6": "X6", "Pipe": "XP", "8": "X8", "Seconda": "P2"
-  };
-  const scout = [];
-  const usedNums = [new Set(), new Set()];
-  const noteNum = (team, n) => { const v = parseInt(n, 10); if (v > 0) usedNums[team].add(v); };
-  const prog = {};      // set -> [[us, th], ...] dopo ogni punto
-  const setTime = {};   // set -> {first, last} (secondi)
-  const starters = {};  // set -> {lu, ol}
-  let lastT = "", lastZH = 1, lastZV = 1;
+  // 2. TEAMS
+  lines.push("[3TEAMS]");
+  const t0Code = (m.t[0].n || "HOM").replace(/[^A-Za-z0-9]/g, "").slice(0, 3).toUpperCase().padEnd(3, "X");
+  const t1Code = (m.t[1].n || "GUE").replace(/[^A-Za-z0-9]/g, "").slice(0, 3).toUpperCase().padEnd(3, "X");
+  lines.push(`${t0Code};${m.t[0].n || "Casa"};0;${m.t[0].c || ""};;;;`);
+  lines.push(`${t1Code};${m.t[1].n || "Ospiti"};0;${m.t[1].c || ""};;;;`);
 
-  let curSet = 0, curUs = 0, curTh = 0;
-  const fallbackLu = (st.lu && st.lu.length === 6) ? st.lu : ["1", "2", "3", "4", "5", "6"];
-  const fallbackOl = (st.ol && st.ol.length === 6) ? st.ol : ["1", "2", "3", "4", "5", "6"];
-  let activeLu = fallbackLu.slice();
-  let activeOl = fallbackOl.slice();
+  // 3. MORE & COMMENTS
+  lines.push("[3MORE]");
+  lines.push(";;;;;25;25;25;25;15;;;");
+  lines.push("[3COMMENTS]");
+  lines.push(`${(m.nt || "").replace(/[\r\n;]+/g, " ")};;;;`);
 
-  const findSetterZone = (luArr, roster) => {
-    const idx = luArr.findIndex((n) => {
-      const p = (roster || []).find((x) => String(x.n) === String(n));
-      return p && (p.r || "").toUpperCase() === "P";
-    });
-    return idx >= 0 ? idx + 1 : 1;
-  };
-
-  const formatTimeHhMmSs = (secOffset) => {
-    const baseSec = 14 * 3600 + 30 * 60 + Math.max(0, Math.round(secOffset || 0));
-    return `${pad2(Math.floor(baseSec / 3600) % 24)}.${pad2(Math.floor((baseSec % 3600) / 60))}.${pad2(baseSec % 60)}`;
-  };
-  // Orario reale dell'azione (ts), altrimenti tempo video
-  const evTimeStr = (e) => {
-    if (Number.isFinite(e.ts) && e.ts > 1e9) {
-      const d = new Date(e.ts * 1000);
-      return `${pad2(d.getHours())}.${pad2(d.getMinutes())}.${pad2(d.getSeconds())}`;
-    }
-    return formatTimeHhMmSs(e.vt !== undefined ? e.vt : 0);
-  };
-  const evTimeNum = (e) => (Number.isFinite(e.ts) && e.ts > 1e9) ? e.ts : (Number.isFinite(e.vt) ? e.vt : null);
-
-  // Riga DVW esatta con 26 punti e virgola. tStr = orario "hh.mm.ss" oppure "".
-  const buildScoutRow = (code, setNum, zHome, zVis, luH, luV, tStr, extraCol2 = "") => {
-    const hNums = luH.map((n) => parseInt(n, 10) || 0);
-    const vNums = luV.map((n) => parseInt(n, 10) || 0);
-    hNums.forEach((n) => noteNum(0, n));
-    vNums.forEach((n) => noteNum(1, n));
-    if (tStr) lastT = tStr;
-    lastZH = zHome; lastZV = zVis;
-    return `${code};${extraCol2};;;;;;${tStr || ""};${setNum};${zHome};${zVis};;;;${hNums.join(";")};${vNums.join(";")};`;
-  };
-
-  // Riga di chiusura set nel formato completo: **Nset;;;;;;;ora;N+1;rotCasa;rotOspiti;...
-  const endSet = (n) => {
-    const f = [`**${n}set`, "", "", "", "", "", "", lastT, String(n + 1), String(lastZH), String(lastZV)];
-    while (f.length < 27) f.push("");
-    scout.push(f.join(";"));
-  };
-
-  (st.log || []).forEach((e) => {
-    const evSet = e.s || 1;
-    const tStr = evTimeStr(e);
-    const tNum = evTimeNum(e);
-
-    if (evSet !== curSet) {
-      if (curSet > 0) endSet(curSet);
-      const prevSet = curSet;
-      curSet = evSet; curUs = 0; curTh = 0;
-      const initS = (st.init && st.init[curSet]) || (e.b ? { lu: e.b.lu, ol: e.b.ol } : {});
-      activeLu = ((initS.lu && initS.lu.length === 6) ? initS.lu : fallbackLu).slice();
-      activeOl = ((initS.ol && initS.ol.length === 6) ? initS.ol : fallbackOl).slice();
-      starters[curSet] = { lu: activeLu.slice(), ol: activeOl.slice() };
-      prog[curSet] = prog[curSet] || [];
-      const zH0 = findSetterZone(activeLu, st.pl);
-      const zV0 = findSetterZone(activeOl, st.op);
-      const startT = prevSet > 0 || curSet > 1 ? lastT : "";
-      scout.push(buildScoutRow(`*P${pad2(activeLu[0])}>LUp`, curSet, zH0, zV0, activeLu, activeOl, startT));
-      scout.push(buildScoutRow(`*z${zH0}>LUp`, curSet, zH0, zV0, activeLu, activeOl, startT));
-      scout.push(buildScoutRow(`aP${pad2(activeOl[0])}>LUp`, curSet, zH0, zV0, activeLu, activeOl, startT));
-      scout.push(buildScoutRow(`az${zV0}>LUp`, curSet, zH0, zV0, activeLu, activeOl, startT));
-    }
-    if (tNum !== null) {
-      setTime[curSet] = setTime[curSet] || { first: tNum, last: tNum };
-      setTime[curSet].last = tNum;
-    }
-
-    if (e.b && Array.isArray(e.b.lu) && e.b.lu.length === 6) activeLu = e.b.lu.slice();
-    if (e.b && Array.isArray(e.b.ol) && e.b.ol.length === 6) activeOl = e.b.ol.slice();
-    const zH = findSetterZone(activeLu, st.pl);
-    const zV = findSetterZone(activeOl, st.op);
-
-    const tmChar = e.o ? "a" : "*";
-    const pNum = parseInt(e.p, 10);
-
-    if (e.k === "T") {
-      scout.push(buildScoutRow(`${tmChar}T`, curSet, zH, zV, activeLu, activeOl, tStr));
-      return;
-    }
-    if (e.k === "C" && !isNaN(parseInt(e.out, 10)) && !isNaN(parseInt(e.in, 10))) {
-      noteNum(e.o ? 1 : 0, e.out); noteNum(e.o ? 1 : 0, e.in);
-      scout.push(buildScoutRow(`${tmChar}c${pad2(e.out)}:${pad2(e.in)}`, curSet, zH, zV, activeLu, activeOl, tStr));
-      const targetArr = e.o ? activeOl : activeLu;
-      const idx = targetArr.findIndex((n) => String(n) === String(e.out));
-      if (idx >= 0) targetArr[idx] = String(e.in);
-      return;
-    }
-    if (e.k === "F") {
-      endSet(curSet);
-      curSet = 0;
-      return;
-    }
-
-    if (!isNaN(pNum) && pNum > 0 && SK[e.k]) {
-      noteNum(e.o ? 1 : 0, pNum);
-      const m = e.m || {};
-      const dvSk = skToDv[e.k] || "A";
-      const z1 = /^[1-9]$/.test(String(e.k === "B" ? m.zs : m.z)) ? String(e.k === "B" ? m.zs : m.z) : "~";
-      const z2 = /^[1-9]$/.test(String(m.ze)) ? String(m.ze) : "~";
-      const subType = m.t === "Salto" ? "Q" : m.t === "S.float" ? "M" : (dvSk === "B" || dvSk === "R" || dvSk === "D" ? "M" : "H");
-      const comb = dvSk === "A" ? (comboMap[m.bs] || "V5") : "~~";
-      const code = `${tmChar}${pad2(pNum)}${dvSk}${subType}${e.g}${comb}${z1}${z2}~`;
-      scout.push(buildScoutRow(code, curSet, zH, zV, activeLu, activeOl, tStr));
-    }
-
-    if (e.pt === 1) {
-      const wasServing = e.sv === true;
-      curUs++;
-      prog[curSet].push([curUs, curTh]);
-      scout.push(buildScoutRow(`*p${pad2(curUs)}:${pad2(curTh)}`, curSet, zH, zV, activeLu, activeOl, tStr));
-      if (!wasServing) {
-        activeLu.push(activeLu.shift());
-        const nextZH = findSetterZone(activeLu, st.pl);
-        scout.push(buildScoutRow(`*z${nextZH}`, curSet, nextZH, zV, activeLu, activeOl, tStr));
-      }
-    } else if (e.pt === 0) {
-      const wasServing = e.sv === true;
-      curTh++;
-      prog[curSet].push([curUs, curTh]);
-      scout.push(buildScoutRow(`ap${pad2(curUs)}:${pad2(curTh)}`, curSet, zH, zV, activeLu, activeOl, tStr));
-      if (wasServing) {
-        activeOl.push(activeOl.shift());
-        const nextZV = findSetterZone(activeOl, st.op);
-        scout.push(buildScoutRow(`az${nextZV}`, curSet, zH, nextZV, activeLu, activeOl, tStr));
-      }
-    }
-  });
-  if (curSet > 0) endSet(curSet);
-
-  // ---------- 2) RIGHE [3SET] calcolate dallo scout ----------
-  const allSets = [...(st.sets || [])];
-  if ((st.us || 0) + (st.th || 0) > 0 && !allSets.some((x) => x.s == st.set)) {
-    allSets.push({ s: st.set, us: st.us, th: st.th });
-  }
-  const cpFmt = (a, b) => `${String(a).padEnd(2, " ")}-${b}`;
-  const checkpoint = (pr, th, u, t) => {
-    if (pr && pr.length) {
-      for (const q of pr) if (Math.max(q[0], q[1]) >= th) return cpFmt(q[0], q[1]);
-      return "";
-    }
-    const lead = Math.max(u, t) || 1;
-    return u >= t ? cpFmt(th, Math.round(th * t / lead)) : cpFmt(Math.round(th * u / lead), th);
-  };
-  const setLines = [];
+  // 4. SET
+  lines.push("[3SET]");
   for (let i = 0; i < 5; i++) {
-    const sObj = allSets[i];
-    if (sObj) {
-      const sn = sObj.s || (i + 1);
-      const u = sObj.us || 0, t = sObj.th || 0;
-      const pr = prog[sn];
-      const ths = i < 4 ? [8, 16, 21] : [8, 12, 14];
-      const cps = ths.map((th) => checkpoint(pr, th, u, t).replace(/^(\d\d)\s/, "$1"));
-      const tt = setTime[sn];
-      const dur = tt && tt.last > tt.first ? Math.max(1, Math.round((tt.last - tt.first) / 60)) : Math.max(1, Math.round((u + t) * 0.55));
-      setLines.push(`True;${cps[0]};${cps[1]};${cps[2]};${u}-${t};${dur};`);
+    const s = m.s[i];
+    if (s && (s.us > 0 || s.th > 0 || (s.lg && s.lg.length > 0))) {
+      lines.push(`True;8-6;16-14;21-19;${s.us}-${s.th};15;`);
     } else {
-      setLines.push("False;;;;;;");
+      lines.push("True;;;;;");
     }
   }
 
-  // ---------- 3) ROSE (con eventuali maglie usate nello scout ma assenti in rosa) ----------
-  let addedPlayers = 0;
-  const completeRoster = (team, roster) => {
-    const base = (roster || []).map((p) => ({ ...p }));
-    const have = new Set(base.map((p, idx) => parseInt(p.n, 10) || (idx + 1)));
-    [...usedNums[team]].sort((a, b) => a - b).forEach((n) => {
-      if (!have.has(n)) { base.push({ n: String(n), name: "GIOCATORE " + n, r: "" }); addedPlayers++; }
+  // 5. PLAYERS (Mappatura ruoli standard Data Volley: 1=L, 2=S, 3=O, 4=C, 5=P)
+  const roleToDvNum = (r) => {
+    const up = (r || "").trim().toUpperCase();
+    if (up === "L") return "1";
+    if (up === "S" || up === "B") return "2";
+    if (up === "O") return "3";
+    if (up === "C") return "4";
+    if (up === "P") return "5";
+    return "0";
+  };
+
+  const fmtRoster = (teamIdx, plList) => {
+    (plList || []).forEach((p, idx) => {
+      const num = String(p.n || idx + 1).padStart(2, "0");
+      const parts = (p.nm || `Giocatore ${num}`).trim().split(/\s+/);
+      const sur = parts.length > 1 ? parts.slice(1).join(" ") : parts[0];
+      const nam = parts.length > 1 ? parts[0] : "";
+      const roleUp = (p.r || "").trim().toUpperCase();
+      const roleNum = roleToDvNum(roleUp);
+      const isLibero = roleUp === "L" ? "L" : "";
+      const pCode = `${teamIdx === 0 ? t0Code : t1Code}-${num}`;
+      // Colonne DVW: team;num;id;?;?;?;?;?;cognome;nome;soprannome;ruoloNum;libero;capitano;...
+      lines.push(`${teamIdx};${num};${idx + 1};;;;;;${sur};${nam};;${roleNum};${isLibero};;${pCode};;;;;;;;False;`);
     });
-    if (!base.length) base.push({ n: "1", name: "GIOCATORE 1", r: "S" });
-    return base;
   };
-  const startPos = (teamIdx, num, setNum) => {
-    const s = starters[setNum];
-    if (!s) return "";
-    const arr = teamIdx === 0 ? s.lu : s.ol;
-    const idx = arr.findIndex((n) => parseInt(n, 10) === num);
-    return idx >= 0 ? String(idx + 1) : "";
+
+  lines.push("[3PLAYERS-H]");
+  fmtRoster(0, m.t[0].pl);
+  lines.push("[3PLAYERS-V]");
+  fmtRoster(1, m.t[1].pl);
+
+  // 6. ATTACK COMBINATIONS & SETTER CALLS
+  lines.push("[3ATTACKCOMBINATION]");
+  lines.push("X1;4;L;Q;Vel. 4;4;65280;4227072;H;0;;");
+  lines.push("X2;2;L;Q;Vel. 2;2;65280;4227072;H;0;;");
+  lines.push("X7;3;L;Q;Primo Tempo;3;16711680;4227072;M;0;;");
+  lines.push("X5;4;L;H;Super 4;4;255;4227072;O;0;;");
+  lines.push("X6;2;L;H;Super 2;2;255;4227072;O;0;;");
+  lines.push("XP;6;L;M;Pipe;6;16776960;4227072;P;0;;");
+  lines.push("X8;9;L;H;Seconda Linea;9;16776960;4227072;O;0;;");
+  lines.push("CF;3;L;C;Freeball/Altro;3;8421504;4227072;O;0;;");
+
+  lines.push("[3SETTERCALL]");
+  lines.push("K1;;Primo Tempo Avanti;0;16711680;4227072;3;1000;1000;;");
+  lines.push("K2;;Primo Tempo Dietro;0;16711680;4227072;3;1000;1000;;");
+  lines.push("K7;;Veloci;0;65280;4227072;4;1000;1000;;");
+  lines.push("KE;;Palla Alta;0;255;4227072;4;1000;1000;;");
+
+  lines.push("[3WINNINGSYMBOLS]");
+  lines.push("S#;R#;A#;B#;D#;E#;F#;");
+
+  lines.push("[3RESERVE]");
+
+  // 7. SCOUT
+  lines.push("[3SCOUT]");
+
+  const skillMap = { S: "S", R: "R", A: "A", M: "B", D: "D", P: "E", F: "F" };
+  const atkTypeMap = { P: "Q", S: "T", A: "H", V: "N", F: "O" };
+  const combMap = { "1": "X7", "7": "X7", "5": "X5", "6": "X6", "2": "X2", P: "XP", "8": "X8", C: "CF", S: "X5", A: "X1", M: "XP" };
+  const valMap = { "++": "#", "+": "+", "!": "!", "-": "-", "--": "/", "=": "=" };
+
+  const formatCoord = (pt) => {
+    if (!pt || typeof pt.x !== "number" || typeof pt.y !== "number") return "";
+    // Coordinate DVW standard: 4 cifre X (0000-0100 -> scalato) + 4 cifre Y
+    const x = Math.max(0, Math.min(9999, Math.round(pt.x * 100)));
+    const y = Math.max(0, Math.min(9999, Math.round(pt.y * 100)));
+    return String(x).padStart(4, "0") + String(y).padStart(4, "0");
   };
-  const fmtRoster = (teamId, prefix, roster) => {
-    const out = [];
-    completeRoster(teamId, roster).forEach((p, idx) => {
-      const num = parseInt(p.n, 10) || (idx + 1);
-      const parts = (p.name || "GIOCATORE").trim().toUpperCase().split(/\s+/);
-      const surname = (parts[0] || "GIOCATORE").replace(/;/g, ",");
-      const firstName = parts.slice(1).join(" ").replace(/;/g, ",");
-      const roleUp = (p.r || "").toUpperCase();
-      const isLib = roleUp === "L" ? "L" : "";
-      const roleNum = roleUp === "L" ? "1" : roleUp === "C" ? "C" : "";
-      const cols = [];
-      for (let k = 1; k <= 5; k++) {
-        cols.push(startPos(teamId, num, k) || (isLib && starters[k] ? "*" : ""));
+
+  for (let sIdx = 0; sIdx < 5; sIdx++) {
+    const s = m.s[sIdx];
+    if (!s || !s.lg || s.lg.length === 0) continue;
+
+    // Formazione iniziale del set (se presente in s.ln, altrimenti 1..6)
+    const lu0 = s.ln && s.ln[0] ? s.ln[0] : [1, 2, 3, 4, 5, 6];
+    const lu1 = s.ln && s.ln[1] ? s.ln[1] : [1, 2, 3, 4, 5, 6];
+    const pSetter0 = lu0[0] || 1;
+    const pSetter1 = lu1[0] || 1;
+
+    // Ordine cronologico dall'inizio alla fine del set
+    const setLogs = [...s.lg].reverse();
+    let curUs = 0;
+    let curTh = 0;
+    let curRot0 = 1;
+    let curRot1 = 1;
+    let lastSrvTeam = s.fs !== undefined ? s.fs : 0;
+
+    // Inserimento formazione iniziale standard DVW prima di **Xset
+    for (let z = 0; z < 6; z++) {
+      lines.push(`*P${String(lu0[z] || 0).padStart(2, "0")}>LUp;;;;;;;;;;;;;;;;;${String(curUs).padStart(2, "0")}-${String(curTh).padStart(2, "0")};${curRot0};${curRot1};;;;;${lu0.map(n => String(n).padStart(2, "0")).join(";")};${lu1.map(n => String(n).padStart(2, "0")).join(";")};`);
+    }
+    for (let z = 0; z < 6; z++) {
+      lines.push(`aP${String(lu1[z] || 0).padStart(2, "0")}>LUp;;;;;;;;;;;;;;;;;${String(curUs).padStart(2, "0")}-${String(curTh).padStart(2, "0")};${curRot0};${curRot1};;;;;${lu0.map(n => String(n).padStart(2, "0")).join(";")};${lu1.map(n => String(n).padStart(2, "0")).join(";")};`);
+    }
+
+    setLogs.forEach((e) => {
+      if (e.sys) {
+        // Sostituzioni o Time-out
+        if (e.sys.includes("Time-out") || e.sys.includes("TO")) {
+          const pfx = e.t === 1 ? "a" : "*";
+          lines.push(`${pfx}T;;;;;;;;;;;;;;;;;${String(curUs).padStart(2, "0")}-${String(curTh).padStart(2, "0")};${curRot0};${curRot1};;;;;;;;;;;`);
+        }
+        return;
       }
-      out.push(`${teamId};${num};${idx + 1};${cols.join(";")};${prefix}${num};${surname};${firstName};;${isLib};${roleNum};False;;;`);
+
+      const teamChar = e.t === 1 ? "a" : "*";
+      const pNum = String(e.n || 0).padStart(2, "0");
+      const dvSkill = skillMap[e.f] || "F";
+      const dvType = e.f === "S" ? (e.bt === "S" ? "Q" : e.bt === "F" ? "M" : "H") : (atkTypeMap[e.tAlz] || "H");
+      const dvEval = valMap[e.v] || "+";
+
+      let combCode = "~~";
+      if (e.f === "A") {
+        combCode = combMap[e.c] || (e.tAlz === "P" ? "X7" : e.tAlz === "S" ? "X5" : "X1");
+      } else if (e.f === "P") {
+        combCode = "KE";
+      }
+
+      const zStart = e.zs ? String(e.zs) : "~";
+      const zEnd = e.ze ? String(e.ze) : "~";
+      const zSub = e.zSub ? String(e.zSub) : "~";
+      const skillTypeChar = e.f === "A" ? (e.tCol === "P" ? "P" : e.tCol === "M" ? "T" : "H") : "~";
+      const blockers = e.f === "A" && e.nM ? String(e.nM) : "~";
+
+      // Stringa codice DVW standard a 20+ caratteri
+      const code = `${teamChar}${pNum}${dvSkill}${dvType}${dvEval}${combCode}~${zStart}${zEnd}${zSub}${skillTypeChar}${blockers}~~~`;
+
+      const cStart = formatCoord(e.ps);
+      const cMid = "";
+      const cEnd = formatCoord(e.pe);
+      const ts = e.tm !== null && e.tm !== undefined ? Math.floor(e.tm) : "";
+      const scoreStr = `${String(curUs).padStart(2, "0")}-${String(curTh).padStart(2, "0")}`;
+
+      const row = [
+        code, "", "", "", cStart, cMid, cEnd, "",
+        ts, sIdx + 1, curRot0, curRot1,
+        String(pSetter0).padStart(2, "0"), String(pSetter1).padStart(2, "0"),
+        "", "", "", scoreStr, curRot0, curRot1,
+        "", "", "", "",
+        ...lu0.map(n => String(n).padStart(2, "0")),
+        ...lu1.map(n => String(n).padStart(2, "0")),
+        ""
+      ].join(";");
+
+      lines.push(row);
+
+      // Assegnazione punto & rotazione al cambio palla
+      if (e.pt === 1 || e.pt === 0) {
+        const pointToHome = e.pt === 1;
+        if (pointToHome) {
+          curUs++;
+          if (lastSrvTeam === 1) {
+            curRot0 = (curRot0 % 6) + 1;
+            lastSrvTeam = 0;
+            lines.push(`*z${curRot0};;;;;;;;;;;;;;;;;${String(curUs).padStart(2, "0")}-${String(curTh).padStart(2, "0")};${curRot0};${curRot1};;;;;;;;;;;`);
+          }
+        } else {
+          curTh++;
+          if (lastSrvTeam === 0) {
+            curRot1 = (curRot1 % 6) + 1;
+            lastSrvTeam = 1;
+            lines.push(`az${curRot1};;;;;;;;;;;;;;;;;${String(curUs).padStart(2, "0")}-${String(curTh).padStart(2, "0")};${curRot0};${curRot1};;;;;;;;;;;`);
+          }
+        }
+        const ptPfx = pointToHome ? "*" : "a";
+        const newScoreStr = `${String(curUs).padStart(2, "0")}-${String(curTh).padStart(2, "0")}`;
+        lines.push(`${ptPfx}p${newScoreStr};;;;;;;;;;;;;;;;;${newScoreStr};${curRot0};${curRot1};;;;;;;;;;;`);
+      }
     });
-    return out;
-  };
-  const rosterH = fmtRoster(0, hBase, st.pl);
-  const rosterV = fmtRoster(1, vBase, st.op);
 
-  // ---------- 4) ASSEMBLAGGIO ----------
-  const lines = [
-    "[3DATAVOLLEYSCOUT]",
-    "FILEFORMAT: 2.0",
-    `GENERATOR-DAY: ${dateStr} ${timeStr}`,
-    "GENERATOR-IDP: DVW",
-    "GENERATOR-PRG: Data Volley",
-    "GENERATOR-REL: Release 3.7.3",
-    "GENERATOR-VER: Professional",
-    "GENERATOR-NAM: DataScout Volley 4",
-    `LASTCHANGE-DAY: ${dateStr} ${timeStr}`,
-    "LASTCHANGE-IDP: DVW",
-    "LASTCHANGE-PRG: Data Volley",
-    "LASTCHANGE-REL: Release 3.7.3",
-    "LASTCHANGE-VER: Professional",
-    "LASTCHANGE-NAM: DataScout Volley 4",
-    "[3MATCH]",
-    `${mDate};20.30.00;${season};${(mi.cat || "Campionato").replace(/;/g, ",")};Fase;;;;1;1;Z;0;`,
-    ";;42029;;;;R;L;",
-    "[3TEAMS]",
-    `${homeCode};${homeName};${(st.sets || []).filter((q) => q.us > q.th).length};;;16777215;`,
-    `${visCode};${visName};${(st.sets || []).filter((q) => q.th > q.us).length};;;16777215;`,
-    "[3MORE]",
-    `;;;${(mi.place || "").replace(/;/g, ",")};${(mi.place || "").replace(/;/g, ",")};DataScout Volley 4;`,
-    ";4;10;",
-    "[3COMMENTS]",
-    "no comments",
-    "[3SET]",
-    ...setLines,
-    "[3PLAYERS-H]",
-    ...rosterH,
-    "[3PLAYERS-V]",
-    ...rosterV,
-    "[3ATTACKCOMBINATION]",
-    "XF;2;L;Q;Quick lower set behind;;16711680;4976;C;;",
-    "X2;2;L;Q;Quick set behind;;16711680;4868;C;;",
-    "X1;3;R;Q;Quick;;16711680;4956;C;;",
-    "XM;3;C;Q;Quick in 3;;16711680;4949;C;;",
-    "XG;3;R;Q;7-1 Gun;;16711680;4946;C;;",
-    "XC;3;R;Q;Quick far from setter;;16711680;4947;C;;",
-    "XD;3;R;Q;DubleC;;16711680;4941;C;;",
-    "X7;4;R;Q;Quick lower set;;16711680;4932;C;;",
-    "PP;3;L;O;Setter tip;;16711680;4964;S;;",
-    "X9;4;R;M;Mezza davanti dopo 7;;16711680;4924;F;;",
-    "XT;3;R;M;Mezza da posto 4;;16711680;4950;F;;",
-    "X3;3;L;M;Mezza da posto 2;;16711680;4950;B;;",
-    "X4;2;L;M;Mezza dietro;;16711680;4976;B;;",
-    "XB;8;C;M;Pipe set to 6-1;;16711680;4163;P;1;",
-    "XP;8;C;M;Pipe;;16711680;4150;P;1;",
-    "XR;8;C;M;Pipe set to 6-5;;16711680;4138;P;1;",
-    "X5;4;R;T;Shoot in 4;;16711680;4912;F;;",
-    "X0;7;C;T;Shoot in 5;;16711680;4114;F;1;",
-    "X6;2;L;T;Shoot in 2;;16711680;4988;B;;",
-    "X8;9;C;T;Shoot in 1;;16711680;4186;B;1;",
-    "CB;2;L;N;Slide next to setter;;16711680;4970;C;;",
-    "CF;2;L;N;Slide close to setter;;16711680;4976;C;;",
-    "CD;2;L;N;Slide away from setter;;16711680;4986;C;;",
-    "C5;4;R;U;Shoot set in 4;;0;4912;F;;",
-    "C0;7;C;U;Shoot set in 5;;0;4114;F;1;",
-    "C6;2;L;U;Shoot set in 2;;0;4988;B;;",
-    "C8;9;C;U;Shoot set in 1;;0;4186;B;1;",
-    "V5;4;R;H;High set in 4;;255;4912;F;;",
-    "V0;7;C;H;High set in 5;;255;4114;F;1;",
-    "V6;2;L;H;High set in 2;;255;4988;B;;",
-    "V8;9;C;H;High set in 1;;255;4186;B;1;",
-    "VB;8;C;H;High Pipe set to 6-1;;255;4163;P;1;",
-    "VP;8;C;H;High Pipe;;255;4150;P;1;",
-    "VR;8;C;H;High Pipe set to 6-5;;255;4137;P;1;",
-    "V3;3;C;O;High set to 3;;255;4950;-;;",
-    "P2;3;C;O;Second hit to opponent court;;255;4949;-;;",
-    "PR;3;C;O;Attack on opponent freeball;;255;4949;-;;",
-    "[3SETTERCALL]",
-    "K1;;Front Quick;;16711680;3949;4454;4958;;;",
-    "K2;;Back Quick;;16711680;3864;4278;4974;;;",
-    "K7;;Seven;;16711680;3923;4426;4930;;;",
-    "KC;;Quick in 3;;16711680;3849;4449;5049;;;",
-    "KM;;shifted to 2;;16711680;0000;0000;0000;4924,5524,5530,6332,6312,5012,5024,;12632256;",
-    "KP;;Shifted to 4;;16711680;0000;0000;0000;5457,5057,5557,5552,6352,6364,5377,5077,5058,5058,;12632256;",
-    "KE;;No First Tempo;;0;0000;0000;0000;5858,5826,6426,6458,6458,;12632256;",
-    "[3WINNINGSYMBOLS]",
-    "=~~~#~~~=~~~~~~~=/~~#~~~=/~~#~~~=~~~~~~~=~~~~~~~=~~~~~~~",
-    "[3RESERVE]",
-    "[3SCOUT]",
-    ...scout
-  ];
+    lines.push(`**${sIdx + 1}set`);
+  }
 
-  // Il file deve terminare con un a capo (come nei file salvati da Data Volley)
-  const blob = new Blob([lines.join("\r\n") + "\r\n"], { type: "text/plain;charset=utf-8" });
-  // Data Volley nella finestra "Apri" mostra solo i file il cui nome inizia con "&"
-  const baseName = (mi.name || "match").replace(/[^a-z0-9_-]/gi, "_").replace(/_+/g, "_").replace(/^_+|_+$/g, "") || "match";
+  const blob = new Blob([lines.join("\r\n")], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = `&${baseName}.dvw`;
+  const safeName = (m.t[0].n || "Match").replace(/[^a-z0-9]/gi, "_");
+  a.href = url;
+  a.download = `${safeName}_vs_${(m.t[1].n || "Ospiti").replace(/[^a-z0-9]/gi, "_")}.dvw`;
   a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  xs(addedPlayers
-    ? `Scaricato ${a.download} (aggiunte ${addedPlayers} maglie non presenti in rosa)`
-    : `Scaricato ${a.download}`, addedPlayers ? 4500 : 2500);
+  URL.revokeObjectURL(url);
 }
 
 // ==================== UNDO/REDO STORICO, TIMEOUT & BACKUP ====================
